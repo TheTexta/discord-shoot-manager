@@ -1,14 +1,14 @@
-# Future project rename
+# Project rename and rollout record
 
-Status: proposed, not performed. Current repository is `TheTexta/tvm-discord-bot`; Discord remains **TVM Bot**. Suggested future repository/package: `discord-shoot-manager`, project title **Discord Shoot Manager**, subject to availability and final approval.
+Status: approved rollout in progress, 2026-11-02. The existing public repository has been renamed to [`TheTexta/discord-shoot-manager`](https://github.com/TheTexta/discord-shoot-manager), retaining repository ID `1398755756`. The project/package identity is **Discord Shoot Manager** / `discord-shoot-manager`. Discord remains **TVM Bot**. Publishing and production verification are recorded below when completed.
 
 Rename the existing GitHub repository, not a replacement fork, to retain history/issues/stars. Keep TVM's Discord application ID, account/token, invite, nickname, and commands; the reusable application is the backend supporting that identity. No central backend service is required.
 
-## Checklist for a separate change
+## Approved rollout checklist
 
 1. Record known-good commit/configuration and backup; reconcile local/user/upstream changes.
-2. Confirm target-name availability and approve the exact repository rename.
-3. Rename the existing repository. Update title/description/topics, package/lockfile metadata, README, contribution templates, CI labels, Docker source metadata, and direct `/source` URL.
+2. Confirm target-name availability and approve the exact repository rename. Completed: existing repository renamed in place; old URL redirects, repository remains public.
+3. Update title/description/topics, package/lockfile metadata, README, contribution templates, CI labels, Docker source metadata, and direct `/source` URL.
 4. Update local remotes and Coolify Git source; verify deploy-key/webhook access. Preserve the existing application UUID, service identity, persistent mount, and one-replica stop-before-start policy.
 5. Check old/new GitHub URLs, source availability without login, CI/build, and controlled-server compatibility before rollout.
 6. Keep rollback tied to compatible code/configuration and database backup. Do not rename databases, migration metadata, volumes, `tvm:` interactions, or `TVM shoot …` recovery markers as a branding sweep.

@@ -50,7 +50,7 @@ See [troubleshooting](troubleshooting.md) and [recovery guarantees](../architect
 
 For rollback, stop the new bot and deploy the previous known-good commit against a compatible database. If a future migration is incompatible, restore the matching pre-upgrade snapshot rather than downgrading the schema in place. Never run the old and new bot concurrently.
 
-The GitHub repository remains `TheTexta/tvm-discord-bot`. Keep Coolify’s application UUID, service identity, and data volume if its Git source URL changes later. The [project rename](../plans/project-rename.md) is not performed by this work.
+The GitHub repository is `TheTexta/discord-shoot-manager`. Its original `TheTexta/tvm-discord-bot` name redirects. Coolify's existing application UUID, service identity, and data volume are retained; its source URL uses the new repository name. See the [rename record](../plans/project-rename.md). Discord remains **TVM Bot**.
 
 ## Production access
 

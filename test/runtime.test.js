@@ -453,7 +453,7 @@ test('startup gates interactions, keeps source available, and resolves only afte
     assert.equal(verify.replies[0].flags, 64)
     const source = f.interaction('source')
     await f.handle(source)
-    assert.match(source.replies[0].content, /tvm-discord-bot/)
+    assert.match(source.replies[0].content, /discord-shoot-manager/)
     assert.equal(ready, false)
     waiting.resolve()
     await start

@@ -4,7 +4,7 @@ Status: compatibility profile for the existing installation, not a fresh product
 
 ## Identity and configuration
 
-- GitHub/project: `TheTexta/tvm-discord-bot` / TVM Discord Bot. No rename has occurred.
+- GitHub/project: `TheTexta/discord-shoot-manager` / Discord Shoot Manager. The original `TheTexta/tvm-discord-bot` repository was renamed in place, retaining history and its repository ID.
 - Discord application/account identity: **TVM Bot**. Preserve the existing application ID, bot ID/token, and server installation. A future GitHub rebrand does not require a new bot or invite.
 - Existing `TVM_*` settings remain supported; membership defaults enabled; wording remains in root `ui-text.json` unless an override is deliberately configured.
 - Default input/edit timezone: `America/Toronto`.

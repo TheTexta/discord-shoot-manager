@@ -1,8 +1,8 @@
-# TVM Discord Bot
+# Discord Shoot Manager
 
-TVM’s Discord bot verifies members against an email roster, assigns membership roles, and manages private shoot workspaces. Each roster email links to one Discord account.
+A self-hosted, single-guild Discord shoot manager with optional roster-based membership verification. It manages private shoot workspaces, crew participation, scheduling, access, and archives. With membership enabled, each roster email links to one Discord account and grants configured membership roles.
 
-The same single-guild application can run for another organisation with configurable roles, wording, and timezone, including **shoot-only mode without email verification**. The project name and TVM's Discord identity remain unchanged. Start with the [documentation index](docs/README.md), [setup guide](docs/guides/setup.md), and [TVM deployment profile](docs/deployments/tvm.md).
+Each organisation runs its own bot/application, configuration, and database, with configurable roles, wording, and timezone, including **shoot-only mode without email verification**. TVM's installation remains **TVM Bot**, backed by this project; the GitHub rename does not change its Discord identity or existing workspaces. Start with the [documentation index](docs/README.md), [setup guide](docs/guides/setup.md), and [TVM deployment profile](docs/deployments/tvm.md).
 
 ## Quick start
 
@@ -26,6 +26,8 @@ Startup validates configuration, editable messages, roles, channel permissions, 
 For a shoot-only deployment, use [`examples/shoot-only.env.example`](examples/shoot-only.env.example) instead: explicitly set `MEMBERSHIP_ENABLED=false`, eligible role IDs, and all shoot resources. No roster, membership roles, SMTP, or verification secret is needed. Neutral settings accept legacy `TVM_*` aliases and reject conflicting values. See [configuration](docs/reference/configuration.md) for the complete contract and wording overrides.
 
 ## Membership
+
+The following role names describe the default TVM profile; other deployments configure their own corresponding role IDs and wording.
 
 Members receive `General Member`. Editors/producers also receive `Executives (Producers & Editors)`; admins also receive `Admin Team`. Codes expire after 15 minutes and allow five attempts. Requests and sends are rate limited.
 

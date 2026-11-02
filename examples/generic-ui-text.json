@@ -23,7 +23,7 @@
         "roleFailed": "Your code was accepted, but your Discord roles could not be confirmed. Contact a server administrator.",
         "complete": "You're verified! Your membership grants {roles}.",
         "post": "Verify using your roster email to receive {memberRole}. Executives also receive {execRole}, and administrators receive {adminRole}.",
-        "source": "Source code: https://github.com/TheTexta/tvm-discord-bot",
+        "source": "Source code: https://github.com/TheTexta/discord-shoot-manager",
         "failed": "Something went wrong. Contact a server administrator.",
         "starting": "The bot is starting. Please try again shortly."
     },

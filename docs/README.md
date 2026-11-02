@@ -1,6 +1,6 @@
 # Documentation
 
-This application manages private Discord shoot workspaces, with optional roster-based membership verification. The project and its TVM installation are still named **TVM Discord Bot / TVM Bot**. The reusable runtime is not a multi-server hosted service.
+**Discord Shoot Manager** manages private Discord shoot workspaces, with optional roster-based membership verification. TVM's installation remains **TVM Bot**. The reusable runtime is not a multi-server hosted service.
 
 ## Start here
 
@@ -18,7 +18,7 @@ This application manages private Discord shoot workspaces, with optional roster-
 
 - [Accepted platform scope](decisions/0001-platform-scope.md).
 - [Generalisation implementation status](plans/generalisation.md).
-- [Future GitHub/project rename](plans/project-rename.md): proposed, no rename performed.
+- [GitHub/project rename record](plans/project-rename.md) and [accepted identity decision](decisions/0002-project-identity.md): GitHub identity is independent of TVM Bot.
 - [Expanded human-permission diagnostics](plans/permission-diagnostics.md): proposed, not implemented.
 - [Initial rollout history](archive/initial-rollout.md) and [upstream archive](upstream/README.md): historical, not operating instructions.
 

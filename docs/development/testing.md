@@ -16,8 +16,8 @@ Shoot fixtures live under `test/helpers`. Lifecycle, forms, reactions, recovery,
 ## Container checks
 
 ```sh
-docker build -t tvm-discord-bot:test .
-docker run --rm tvm-discord-bot:test node scripts/check-container.js
+docker build -t discord-shoot-manager:test .
+docker run --rm discord-shoot-manager:test node scripts/check-container.js
 ```
 
 The smoke check runs as the non-root runtime user and covers native SQLite, migrations, private/writable persistence, membership and shoot-only storage/health, and import-safe startup. Debian bookworm in both stages keeps native bindings compatible. CI builds/checks the image separately from Node tests.

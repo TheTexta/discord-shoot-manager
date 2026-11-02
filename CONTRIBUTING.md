@@ -1,6 +1,6 @@
 # Contributing
 
-This project supports TVM’s Discord operations and reusable single-guild shoot-management deployments, with optional membership verification. Project and Discord names remain unchanged. Open an issue describing the problem and expected behavior before proposing substantial workflow changes. Small fixes can go directly to a pull request.
+Discord Shoot Manager supports reusable single-guild shoot-management deployments, with optional membership verification. TVM's installation remains TVM Bot; repository branding and Discord identity are separate. Open an issue describing the problem and expected behavior before proposing substantial workflow changes. Small fixes can go directly to a pull request.
 
 Use Node.js 22.13+ and `npm ci`. Run `npm run check` before submitting. Add regression tests for behavioral fixes using temporary databases and Discord/mail adapters; tests must not require live credentials. For container changes, also run the smoke checks in [the development guide](docs/development/testing.md).
 
