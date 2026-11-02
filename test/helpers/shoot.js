@@ -31,10 +31,11 @@ const fields = (name = 'TVM film', value = '2026-10-15 13:30', location = 'Studi
     return { getTextInputValue: (key) => ({ name, date, time, location })[key], getStringSelectValues: () => [period] }
 }
 
-async function fixture(t, { reporting = false, now } = {}) {
+async function fixture(t, { reporting = false, now, membershipEnabled = true } = {}) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tvm-shoot-'))
     const filename = path.join(dir, 'tvm.db')
-    let store = new Store(filename, 's'.repeat(32))
+    const openStore = () => new Store(filename, membershipEnabled ? 's'.repeat(32) : undefined, { membershipEnabled })
+    let store = openStore()
     await store.ready
     t.after(async () => {
         service.stop()
@@ -42,14 +43,16 @@ async function fixture(t, { reporting = false, now } = {}) {
         await store.close()
         fs.rmSync(dir, { recursive: true, force: true })
     })
-    await store.replaceRoster(
-        IDS.guild,
-        ['invited', 'joined', 'extra'].map((name) => ({ email: `${name}@example.org`, role: 'gm' })),
-        IDS.admin
-    )
-    for (const name of ['invited', 'joined', 'extra']) {
-        await store.savePending(IDS.guild, IDS[name], `${name}@example.org`, '123456')
-        assert.equal((await store.verifyAndClaim(IDS.guild, IDS[name], '123456')).ok, true)
+    if (membershipEnabled) {
+        await store.replaceRoster(
+            IDS.guild,
+            ['invited', 'joined', 'extra'].map((name) => ({ email: `${name}@example.org`, role: 'gm' })),
+            IDS.admin
+        )
+        for (const name of ['invited', 'joined', 'extra']) {
+            await store.savePending(IDS.guild, IDS[name], `${name}@example.org`, '123456')
+            assert.equal((await store.verifyAndClaim(IDS.guild, IDS[name], '123456')).ok, true)
+        }
     }
     const channels = new Collection()
     const members = new Collection()
@@ -400,7 +403,7 @@ async function fixture(t, { reporting = false, now } = {}) {
         addReaction,
         restart: async () => {
             await store.close()
-            store = new Store(filename, 's'.repeat(32))
+            store = openStore()
             await store.ready
             service.store = store
         }

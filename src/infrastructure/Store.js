@@ -7,9 +7,9 @@ const ShootRepository = require('../shoots/ShootRepository')
 
 // Lifecycle owner and compatibility facade; repositories share one connection and queue.
 class Store extends SqliteDatabase {
-    constructor(filename, codeSecret) {
+    constructor(filename, codeSecret, { membershipEnabled = true } = {}) {
         super(filename)
-        this.membership = new MembershipRepository(this, codeSecret)
+        this.membership = membershipEnabled ? new MembershipRepository(this, codeSecret) : null
         this.shoots = new ShootRepository(this)
     }
     status(...args) {
@@ -23,6 +23,9 @@ class Store extends SqliteDatabase {
     }
     replaceRoster(...args) {
         return this.membership.replaceRoster(...args)
+    }
+    previewRoster(...args) {
+        return this.membership.previewRoster(...args)
     }
     allowRequest(...args) {
         return this.membership.allowRequest(...args)
@@ -73,7 +76,7 @@ class Store extends SqliteDatabase {
         return this.membership.audit(...args)
     }
     async sweep() {
-        await this.membership.sweep()
+        await this.membership?.sweep()
         await this.shoots.sweepDrafts()
     }
     createShootDraft(...args) {

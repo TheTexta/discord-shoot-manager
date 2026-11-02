@@ -119,6 +119,79 @@ test('startup rejects production access pointing to the automatically discovered
     await f.app.shutdown()
 })
 
+test('startup rejects admission through the automatically discovered Unverified role', async () => {
+    const id = '100000000000000015'
+    const f = fixture({ config: { shootEligibleRoleIds: [id] } })
+    f.unverifiedRoles.initialize = async () => ({ id })
+    await assert.rejects(f.app.start(), /must not include Unverified/)
+    await f.app.shutdown()
+})
+
+test('shoot-only runtime has no membership dependencies, rejects stale interactions and drains normally', async () => {
+    const forbidden = () => {
+        throw new Error('Membership must not run')
+    }
+    const f = fixture({
+        mail: null,
+        config: {
+            membershipEnabled: false,
+            shoots: {},
+            memberRoleId: null,
+            execRoleId: null,
+            shootEligibleRoleIds: [adminId]
+        },
+        store: { async close() {}, status: forbidden, activeClaims: forbidden, removedClaims: forbidden }
+    })
+    Object.assign(f.unverifiedRoles, { initialize: forbidden, syncGuild: forbidden, syncMember: forbidden })
+    let reconciled = 0
+    f.shoots.reconcileAll = async () => {
+        reconciled++
+    }
+    await f.app.start()
+    assert.deepEqual(
+        f.app.commands.map((command) => command.name),
+        ['source', 'shoot']
+    )
+    assert.equal(f.app.healthStatus().membershipEnabled, false)
+    assert.equal(f.app.healthStatus().membershipLastSuccessAt, null)
+    for (const command of ['verify', 'upload', 'roster', 'postverify', 'testmail']) {
+        const interaction = f.interaction(command)
+        await f.handle(interaction)
+        assert.match(interaction.replies[0].content, /disabled/)
+        assert.equal(interaction.replies[0].flags, 64)
+    }
+    for (const id of ['tvm:verify', 'tvm:open-code', 'tvm:email', 'tvm:code', 'tvm:roster:confirm:stale']) {
+        const interaction = f.interaction(null)
+        interaction.customId = id
+        interaction.isButton = () => !['tvm:email', 'tvm:code'].includes(id)
+        await f.handle(interaction)
+        assert.match(interaction.replies[0].content, /disabled/)
+    }
+    const unrelated = f.interaction(null)
+    unrelated.isButton = () => true
+    unrelated.customId = 'another-app:button'
+    await f.handle(unrelated)
+    assert.equal(unrelated.replies.length, 0)
+    const member = { guild: { id: guildId }, id: userId, user: { bot: false } }
+    await f.client.listeners('guildMemberAdd')[0](member)
+    await f.client.listeners('guildMemberUpdate')[0]({ ...member, roles: [] }, { ...member, roles: [adminId] })
+    const afterChange = reconciled
+    await f.client.listeners('guildMemberUpdate')[0](
+        { ...member, roles: [adminId] },
+        { ...member, roles: [adminId, 'unrelated'] }
+    )
+    assert.equal(reconciled, afterChange)
+    await f.client.listeners('guildMemberRemove')[0](member)
+    await f.client.listeners('shardResume')[0]()
+    assert.equal(reconciled, 4)
+    const foreign = f.interaction('verify')
+    foreign.guildId = 'different-server'
+    await f.handle(foreign)
+    assert.equal(foreign.replies.length, 0)
+    await f.app.shutdown()
+    assert.deepEqual(f.closed, ['shoots', 'client'])
+})
+
 test('importing runtime modules needs no environment, database, or Discord connection', () => {
     const result = spawnSync(process.execPath, ['-e', "require('./src/tvm/App'); require('./src/tvm/index')"], {
         cwd: path.join(__dirname, '..'),
@@ -190,6 +263,77 @@ test('shutdown has a deadline when an external operation does not finish', async
     assert.ok(f.closed.includes('client'))
     delivered.resolve()
     await request
+})
+
+test('a generically acknowledged verification delivery remains tracked through shutdown', async () => {
+    const sending = deferred(),
+        delivered = deferred()
+    const order = []
+    const f = fixture({
+        store: {
+            async status() {
+                return { meta: { version: 1 }, count: 1 }
+            },
+            async allowRequest() {
+                return true
+            },
+            async lookup() {
+                return { email: 'member@example.org' }
+            },
+            async reserveSend() {
+                return true
+            },
+            async savePending() {},
+            async close() {
+                order.push('store')
+            }
+        },
+        mail: {
+            async sendMail() {
+                sending.resolve()
+                await delivered.promise
+                order.push('delivered')
+            },
+            close() {
+                order.push('mail')
+            }
+        }
+    })
+    await f.app.start()
+    const interaction = f.interaction(null)
+    const request = f.handle(interaction)
+    await sending.promise
+    assert.match(interaction.replies[0].content, /If this email is on/)
+    const shutdown = f.app.shutdown()
+    assert.deepEqual(order, [])
+    delivered.resolve()
+    await Promise.all([request, shutdown])
+    assert.deepEqual(order, ['delivered', 'mail', 'store'])
+})
+
+test('runtime preserves SMTP acceptance when only the administrator confirmation fails', async (t) => {
+    let sends = 0
+    const f = fixture({
+        mail: {
+            async sendMail() {
+                sends++
+            },
+            close() {}
+        }
+    })
+    t.after(() => f.app.shutdown())
+    await f.app.start()
+    const interaction = f.interaction('testmail')
+    let edits = 0
+    interaction.editReply = async (payload) => {
+        if (++edits === 1) throw new Error('confirmation expired')
+        interaction.replies.push(payload)
+    }
+    await f.handle(interaction)
+    assert.equal(sends, 1)
+    assert.match(interaction.replies[0].content, /action was accepted.*confirmation could not be delivered/)
+    assert.match(interaction.replies[0].content, /SMTP accepted/)
+    assert.doesNotMatch(interaction.replies[0].content, /Couldn't complete/)
 })
 
 test(

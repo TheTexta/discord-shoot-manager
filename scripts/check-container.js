@@ -9,6 +9,7 @@ const Store = require('../src/infrastructure/Store')
 const { spawnSync } = require('node:child_process')
 const { HealthReporter } = require('../src/infrastructure/HealthReporter')
 const { createApp } = require('../src/app/App')
+const { loadUiText } = require('../src/shared/uiText')
 require('../src/app/index') // Importing either module must not start the bot.
 
 async function main() {
@@ -17,13 +18,16 @@ async function main() {
     fs.accessSync(process.argv[2] || '/usr/app/config', fs.constants.W_OK)
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tvm-container-'))
     const filename = path.join(dir, 'smoke.db')
-    const store = new Store(filename, 'smoke-test-secret'.repeat(3))
+    let store = new Store(filename, 'smoke-test-secret'.repeat(3))
     let state = 'ready'
+    let membershipEnabled = true
     const health = new HealthReporter(filename, () => ({
         state,
         connected: state === 'ready',
-        membershipLastSuccessAt: Date.now(),
-        shootsEnabled: false
+        membershipEnabled,
+        membershipLastSuccessAt: membershipEnabled ? Date.now() : null,
+        shootsEnabled: !membershipEnabled,
+        shootLastSuccessAt: !membershipEnabled ? Date.now() : null
     }))
     try {
         await store.ready
@@ -33,13 +37,38 @@ async function main() {
         assert.deepEqual(await store.rosterEntries('100000000000000001'), [{ email: 'smoke@example.org', role: 'gm' }])
         assert.equal((await store.status('100000000000000001')).meta.authoritative, 1)
         await health.start()
-        const result = spawnSync(process.execPath, [path.join(__dirname, 'check-health.js')], {
-            env: { ...process.env, TVM_DATABASE_PATH: filename },
-            encoding: 'utf8'
-        })
+        const check = () =>
+            spawnSync(process.execPath, [path.join(__dirname, 'check-health.js')], {
+                env: { ...process.env, DATABASE_PATH: filename, TVM_DATABASE_PATH: filename },
+                encoding: 'utf8'
+            })
+        let result = check()
         assert.equal(result.status, 0, result.stderr)
+        await store.close()
+        membershipEnabled = false
+        store = new Store(filename, undefined, { membershipEnabled })
+        await store.ready
+        assert.equal(store.membership, null)
+        await store.shoots.createShootDraft('smoke-shoot', '100000000000000001', '100000000000000002', [])
+        await store.sweep()
+        assert.equal((await store.shoots.getShoot('smoke-shoot', '100000000000000001')).status, 'draft')
+        await health.write()
+        result = check()
+        assert.equal(result.status, 0, result.stderr)
+        await store.close()
+        store = new Store(filename, 'smoke-test-secret'.repeat(3))
+        await store.ready
+        assert.equal(
+            (await store.status('100000000000000001')).count,
+            1,
+            'Retained membership data survives disabled mode'
+        )
+        assert.equal(
+            loadUiText(path.join(__dirname, '../examples/generic-ui-text.json')).shoot.setupTitle,
+            'Create a shoot'
+        )
         console.log(
-            'Container smoke check passed: non-root runtime, native SQLite, snapshot migration, healthcheck, and writable data directory'
+            'Container smoke check passed: non-root runtime, native SQLite, migrations, both capability health/storage modes, generic copy, and writable data directory'
         )
     } finally {
         state = 'stopping'

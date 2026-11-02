@@ -1,5 +1,8 @@
 node_modules/
+.agents/
+skills-lock.json
 docs/upstream/
+docs/archive/
 package-lock.json
 plan.md
 .env*

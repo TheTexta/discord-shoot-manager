@@ -21,6 +21,7 @@ COPY --from=dependencies /usr/app/node_modules ./node_modules
 COPY --chown=node:node package.json package-lock.json ui-text.json LICENSE ./
 COPY --chown=node:node src ./src
 COPY --chown=node:node scripts ./scripts
+COPY --chown=node:node examples ./examples
 
 USER node
 HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 CMD ["node", "scripts/check-health.js"]

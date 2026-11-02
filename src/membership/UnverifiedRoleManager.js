@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 'use strict'
 
-const { uiText } = require('../shared/uiText')
+const { uiText, unverifiedRoleName } = require('../shared/uiText')
 
 const { PermissionFlagsBits } = require('discord.js')
 
@@ -23,12 +23,13 @@ class UnverifiedRoleManager {
             role = roles.get(this.roleId)
             if (!role) throw new Error(uiText('errors.missingUnverified'))
         } else {
-            const matches = roles.filter((role) => role.name === uiText('roles.unverified'))
+            // Presentation overrides must not select a different managed role.
+            const matches = roles.filter((role) => role.name === unverifiedRoleName)
             if (matches.size > 1) throw new Error(uiText('errors.ambiguousUnverified'))
             role =
                 matches.first() ||
                 (await guild.roles.create({
-                    name: uiText('roles.unverified'),
+                    name: unverifiedRoleName,
                     permissions: [],
                     mentionable: true,
                     reason: uiText('roleReasons.create')

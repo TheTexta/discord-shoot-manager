@@ -18,6 +18,92 @@ const env = {
     VERIFICATION_CODE_SECRET: 's'.repeat(32)
 }
 
+test('neutral aliases preserve legacy configuration and reject competing values', () => {
+    const aliases = {
+        TVM_GUILD_ID: 'DISCORD_GUILD_ID',
+        TVM_MEMBER_ROLE_ID: 'MEMBER_ROLE_ID',
+        TVM_EXEC_ROLE_ID: 'EXEC_ROLE_ID',
+        TVM_ADMIN_ROLE_ID: 'BOT_ADMIN_ROLE_ID',
+        TVM_ADMIN_ALERT_CHANNEL_ID: 'ADMIN_ALERT_CHANNEL_ID',
+        TVM_DATABASE_PATH: 'DATABASE_PATH',
+        TVM_UNVERIFIED_ROLE_ID: 'UNVERIFIED_ROLE_ID',
+        TVM_PRODUCTION_ACCESS_ROLE_ID: 'PRODUCTION_ACCESS_ROLE_ID',
+        TVM_SHOOT_ANNOUNCEMENT_CHANNEL_ID: 'SHOOT_ANNOUNCEMENT_CHANNEL_ID',
+        TVM_SHOOT_CATEGORY_ID: 'SHOOT_CATEGORY_ID',
+        TVM_SHOOT_ARCHIVE_CATEGORY_ID: 'SHOOT_ARCHIVE_CATEGORY_ID'
+    }
+    const legacy = {
+        ...env,
+        TVM_DATABASE_PATH: './config/test.db',
+        TVM_UNVERIFIED_ROLE_ID: '100000000000000020',
+        TVM_PRODUCTION_ACCESS_ROLE_ID: '100000000000000021',
+        TVM_SHOOT_ANNOUNCEMENT_CHANNEL_ID: '100000000000000022',
+        TVM_SHOOT_CATEGORY_ID: '100000000000000023',
+        TVM_SHOOT_ARCHIVE_CATEGORY_ID: '100000000000000024'
+    }
+    const neutral = Object.fromEntries(Object.entries(legacy).map(([key, value]) => [aliases[key] || key, value]))
+    assert.deepEqual(loadConfig(neutral), loadConfig(legacy))
+    assert.deepEqual(loadConfig({ ...neutral, ...legacy }), loadConfig(legacy))
+    for (const [old, name] of Object.entries(aliases)) {
+        assert.throws(() => loadConfig({ ...legacy, [name]: `${legacy[old]}x` }), /Conflicting/)
+    }
+})
+
+test('shoot-only mode requires explicit roles but no mail, roster roles or verification secret', () => {
+    const shootOnly = {
+        DISCORD_BOT_TOKEN: 'test',
+        DISCORD_APPLICATION_ID: env.DISCORD_APPLICATION_ID,
+        DISCORD_GUILD_ID: env.TVM_GUILD_ID,
+        BOT_ADMIN_ROLE_ID: env.TVM_ADMIN_ROLE_ID,
+        ADMIN_ALERT_CHANNEL_ID: env.TVM_ADMIN_ALERT_CHANNEL_ID,
+        MEMBERSHIP_ENABLED: 'false',
+        SHOOT_ELIGIBLE_ROLE_IDS: env.TVM_MEMBER_ROLE_ID,
+        PRODUCTION_ACCESS_ROLE_ID: '100000000000000010',
+        SHOOT_ANNOUNCEMENT_CHANNEL_ID: '100000000000000007',
+        SHOOT_CATEGORY_ID: '100000000000000008',
+        SHOOT_ARCHIVE_CATEGORY_ID: '100000000000000009'
+    }
+    const value = loadConfig(shootOnly)
+    assert.equal(value.membershipEnabled, false)
+    assert.equal(value.codeSecret, undefined)
+    assert.equal(value.resendApiKey, undefined)
+    assert.equal(value.memberRoleId, null)
+    assert.deepEqual(value.shootEligibleRoleIds, [env.TVM_MEMBER_ROLE_ID])
+    for (const ids of [
+        '',
+        env.TVM_GUILD_ID,
+        `${env.TVM_MEMBER_ROLE_ID},${env.TVM_MEMBER_ROLE_ID}`,
+        'bad',
+        `${env.TVM_MEMBER_ROLE_ID},`
+    ]) {
+        assert.throws(() => loadConfig({ ...shootOnly, SHOOT_ELIGIBLE_ROLE_IDS: ids }), /SHOOT_ELIGIBLE_ROLE_IDS/)
+    }
+    assert.throws(() => loadConfig({ ...shootOnly, MEMBERSHIP_ENABLED: 'yes' }), /true or false/)
+    assert.throws(() => loadConfig({ ...shootOnly, MEMBERSHIP_ENABLED: 'true' }), /Missing required/)
+    assert.throws(() => loadConfig({ ...env, MEMBERSHIP_ENABLED: 'false' }), /both capabilities/)
+    assert.throws(() => loadRosterConfig(shootOnly), /Roster maintenance/)
+    assert.equal(loadConfig(env).membershipEnabled, true)
+    assert.deepEqual(loadConfig(env).shootEligibleRoleIds, [
+        env.TVM_MEMBER_ROLE_ID,
+        env.TVM_EXEC_ROLE_ID,
+        env.TVM_ADMIN_ROLE_ID
+    ])
+})
+
+test('deployment timezone is validated without changing the legacy Toronto default', () => {
+    assert.equal(loadConfig(env).shootTimezone, 'America/Toronto')
+    assert.equal(loadConfig({ ...env, SHOOT_TIMEZONE: 'Europe/London' }).shootTimezone, 'Europe/London')
+    assert.throws(() => loadConfig({ ...env, SHOOT_TIMEZONE: 'Not/A_Zone' }), /SHOOT_TIMEZONE/)
+})
+
+test('Unverified cannot be an eligible shoot role, even with an explicit admission policy', () => {
+    const roleId = '100000000000000020'
+    assert.throws(
+        () => loadConfig({ ...env, UNVERIFIED_ROLE_ID: roleId, SHOOT_ELIGIBLE_ROLE_IDS: roleId }),
+        /conflicting/
+    )
+})
+
 test('configuration uses injected environment, ignores retired revocation settings, and rejects unsafe IDs', () => {
     for (const value of ['true', 'false', 'yes']) {
         assert.equal(loadConfig({ ...env, TVM_AUTO_ROLE_REVOCATION: value }).autoRoleRevocation, undefined)

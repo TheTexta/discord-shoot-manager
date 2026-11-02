@@ -7,11 +7,12 @@
         "start": "node --env-file-if-exists=.env.local src/app/index.js",
         "test": "node --test test/*.test.js",
         "roster:check": "node scripts/check-roster.js",
-        "discord:check": "node --env-file=.env.local scripts/check-discord.js",
+        "discord:check": "node --env-file-if-exists=.env.local scripts/check-discord.js",
+        "docs:check": "node scripts/check-docs.js",
         "lint": "eslint .",
         "format": "prettier --write .",
         "format:check": "prettier --check .",
-        "check": "npm run lint && npm run format:check && npm test"
+        "check": "npm run lint && npm run format:check && npm run docs:check && npm test"
     },
     "author": "TVM contributors (based on EmailVerify by Lars Benedikt Kaesberg)",
     "license": "AGPL-3.0-or-later",
@@ -22,7 +23,7 @@
         "csv-parse": "^7.0.3",
         "discord.js": "^14.25.1",
         "luxon": "^3.7.2",
-        "nodemailer": "^10.0.13",
+        "nodemailer": "^10.1.4",
         "sqlite3": "^6.0.1"
     },
     "devDependencies": {

@@ -52,3 +52,20 @@ test('health reporter writes privately, serializes updates, and marks shutdown w
     assert.equal(data.state, 'stopping')
     assert.doesNotMatch(JSON.stringify(data), /email|userId|token|secret/)
 })
+
+test('shoot-only health skips membership freshness but not shoot or connection health', () => {
+    const now = 100000000
+    const value = {
+        at: now,
+        state: 'ready',
+        connected: true,
+        membershipEnabled: false,
+        shootsEnabled: true,
+        membershipLastSuccessAt: null,
+        shootLastSuccessAt: now
+    }
+    assert.equal(checkHealth(value, now), true)
+    assert.throws(() => checkHealth({ ...value, membershipEnabled: true }, now), /Membership/)
+    assert.throws(() => checkHealth({ ...value, shootLastSuccessAt: null }, now), /Shoot/)
+    assert.throws(() => checkHealth({ ...value, connected: false }, now), /Discord/)
+})

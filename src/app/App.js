@@ -15,12 +15,13 @@ const { HealthReporter } = require('../infrastructure/HealthReporter')
 const { createAdminAlerter } = require('../infrastructure/AdminAlerts')
 const { uiText, validateUiText } = require('../shared/uiText')
 const { canManageBot } = require('../shared/permissions')
+const { AdminOperationError, withAdminOperation } = require('../shared/AdminOperation')
 const UnverifiedRoleManager = require('../membership/UnverifiedRoleManager')
 const { ShootService } = require('../shoots/ShootService')
 const { buildCommands } = require('./commands')
 const { createMembershipService } = require('../membership/MembershipService')
 const { createVerificationService } = require('../membership/VerificationService')
-const { createRosterCommands } = require('../membership/RosterCommands')
+const { createRosterCommands, previewButtons } = require('../membership/RosterCommands')
 const { roleKinds, configuredRoleIds } = require('../membership/roles')
 const { normalizeEmail, validEmail } = require('../shared/validation')
 const { modal: shootModal } = require('../shoots/forms')
@@ -38,17 +39,27 @@ function createApp({
     onFatal = () => {},
     shutdownTimeoutMs = 25000
 }) {
-    if (!config || !store || !mail || !client) throw new Error('Application dependencies are required')
+    if (!config || !store || !client || (config.membershipEnabled !== false && !mail))
+        throw new Error('Application dependencies are required')
+    const membershipEnabled = config.membershipEnabled !== false
     validateUiText()
     // Build all interactive components now, including optional shoots, before connecting.
-    emailModal().toJSON()
-    codeModal().toJSON()
-    codeRow().toJSON()
-    buildCommands(true)
-    shootModal({ id: 'validation', revision: 0, name: '', location: '', call_time: null, join_period: 'day' }).toJSON()
+    if (membershipEnabled) {
+        emailModal().toJSON()
+        codeModal().toJSON()
+        codeRow().toJSON()
+        previewButtons('validation', true).toJSON()
+    }
+    buildCommands(Boolean(config.shoots), membershipEnabled)
+    shootModal(
+        { id: 'validation', revision: 0, name: '', location: '', call_time: null, join_period: 'day' },
+        false,
+        config.shootTimezone
+    ).toJSON()
     shootModal(
         { id: 'validation', revision: 0, name: 'Shoot', location: 'Studio', call_time: null, join_period: 'day' },
-        true
+        true,
+        config.shootTimezone
     ).toJSON()
     let state = 'starting'
     let resolveReady, rejectReady
@@ -102,7 +113,7 @@ function createApp({
         return next
     }
 
-    const commands = buildCommands(Boolean(config.shoots))
+    const commands = buildCommands(Boolean(config.shoots), membershipEnabled)
     const shoots =
         shootService ||
         new ShootService({
@@ -113,55 +124,70 @@ function createApp({
             logger
         })
     const privateReply = (interaction, content, components = []) => interaction.editReply({ content, components })
-    const roleIds = configuredRoleIds(config)
-    unverifiedRoles ||= new UnverifiedRoleManager(config.guildId, config.unverifiedRoleId, Object.values(roleIds))
+    const roleIds = membershipEnabled ? configuredRoleIds(config) : {}
+    if (membershipEnabled)
+        unverifiedRoles ||= new UnverifiedRoleManager(config.guildId, config.unverifiedRoleId, [
+            ...new Set([...Object.values(roleIds), ...(config.shootEligibleRoleIds || [])])
+        ])
     let unverifiedReady = false
-    const membership = createMembershipService({
-        config,
-        store: store.membership || store,
-        unverifiedRoles,
-        alertAdmins,
-        logger,
-        withMembershipLock
-    })
-    const { roleNames, reconcile } = membership
-    const { sendVerification, checkCode } = createVerificationService({
-        config,
-        store: store.membership || store,
-        mail,
-        withMembershipLock,
-        membership,
-        privateReply,
-        alertAdmins,
-        logger
-    })
+    const membership = membershipEnabled
+        ? createMembershipService({
+              config,
+              store: store.membership || store,
+              unverifiedRoles,
+              alertAdmins,
+              logger,
+              withMembershipLock
+          })
+        : null
+    const { roleNames, reconcile } = membership || {}
+    const { sendVerification, checkCode } = membershipEnabled
+        ? createVerificationService({
+              config,
+              store: store.membership || store,
+              mail,
+              withMembershipLock,
+              membership,
+              privateReply,
+              alertAdmins,
+              logger
+          })
+        : {}
     const healthStatus = () => ({
         state,
         connected: state === 'ready' && (client.isReady?.() ?? true),
-        membershipLastSuccessAt: membership.status().lastSuccessAt,
+        membershipEnabled,
+        membershipLastSuccessAt: membership?.status().lastSuccessAt ?? null,
         shootsEnabled: Boolean(config.shoots),
         shootLastSuccessAt: shoots.lastSuccessAt ?? null
     })
     function scheduleReconciliation(guild) {
         return track(async () => {
             try {
-                return await reconcile(guild)
+                return membershipEnabled ? await reconcile(guild) : null
             } finally {
                 if (!stopping) await shoots.reconcileAll?.()
             }
         })
     }
-    const { uploadRoster, handleRoster } = createRosterCommands({
-        config,
-        store: store.membership || store,
-        withMembershipLock,
-        membership,
-        privateReply,
-        unverifiedRoles,
-        alertAdmins,
-        scheduleReconciliation,
-        healthStatus
-    })
+    const {
+        uploadRoster,
+        handleRoster,
+        handleUploadButton,
+        stop: stopRosterCommands
+    } = membershipEnabled
+        ? createRosterCommands({
+              config,
+              store: store.membership || store,
+              withMembershipLock,
+              membership,
+              privateReply,
+              unverifiedRoles,
+              alertAdmins,
+              scheduleReconciliation,
+              healthStatus
+          })
+        : {}
 
     listen(
         'clientReady',
@@ -173,19 +199,30 @@ function createApp({
                 if (stopping) return
                 rest ||= new REST({ version: '10' }).setToken(config.token)
                 const guild = await client.guilds.fetch(config.guildId)
-                const roles = await Promise.all(roleKinds.map((kind) => guild.roles.fetch(roleIds[kind])))
+                const neededRoles = [
+                    ...new Set([
+                        ...(membershipEnabled ? roleKinds.map((kind) => roleIds[kind]) : [config.adminRoleId]),
+                        ...(config.shoots ? config.shootEligibleRoleIds || [] : [])
+                    ])
+                ]
+                const roles = await Promise.all(neededRoles.map((id) => guild.roles.fetch(id)))
                 const botMember = await guild.members.fetchMe()
                 if (
                     roles.some(
                         (role) =>
                             !role ||
                             role.id === guild.id ||
-                            role.managed ||
-                            botMember.roles.highest.position <= role.position
+                            (membershipEnabled &&
+                                Object.values(roleIds).includes(role.id) &&
+                                (role.managed || botMember.roles.highest.position <= role.position))
                     ) ||
-                    !botMember.permissions.has(PermissionFlagsBits.ManageRoles)
+                    (membershipEnabled && !botMember.permissions.has(PermissionFlagsBits.ManageRoles))
                 ) {
-                    throw new Error('Bot cannot manage all configured roles; check its permissions and role position')
+                    throw new Error(
+                        membershipEnabled
+                            ? 'Bot cannot manage all configured roles; check its permissions and role position'
+                            : 'Configured shoot or management roles are missing or unsafe'
+                    )
                 }
                 const alertChannel = await client.channels.fetch(config.alertChannelId)
                 if (
@@ -218,19 +255,24 @@ function createApp({
                 })
                 alertReady = true
                 if (stopping) return
-                const unverifiedRole = await unverifiedRoles.initialize(guild)
-                if (stopping) return
-                if (config.productionAccessRoleId === unverifiedRole.id) {
-                    throw new Error('TVM_PRODUCTION_ACCESS_ROLE_ID must be separate from Unverified')
+                if (membershipEnabled) {
+                    const unverifiedRole = await unverifiedRoles.initialize(guild)
+                    if (stopping) return
+                    if (config.productionAccessRoleId === unverifiedRole.id) {
+                        throw new Error('TVM_PRODUCTION_ACCESS_ROLE_ID must be separate from Unverified')
+                    }
+                    if (config.shootEligibleRoleIds?.includes(unverifiedRole.id)) {
+                        throw new Error('SHOOT_ELIGIBLE_ROLE_IDS must not include Unverified')
+                    }
+                    unverifiedReady = true
+                    const result = await reconcile(guild)
+                    if (stopping) return
+                    logger.log(
+                        `[TVM] Unverified role ${unverifiedRole.id}: added ${result.unverified.added}, removed ${result.unverified.removed}, failed ${result.unverified.failed}`
+                    )
+                    if (result.revoked) logger.log(`[TVM] Reconciled ${result.revoked} removed claims`)
                 }
-                unverifiedReady = true
-                const result = await reconcile(guild)
-                if (stopping) return
                 await shoots.initialize()
-                logger.log(
-                    `[TVM] Unverified role ${unverifiedRole.id}: added ${result.unverified.added}, removed ${result.unverified.removed}, failed ${result.unverified.failed}`
-                )
-                if (result.revoked) logger.log(`[TVM] Reconciled ${result.revoked} removed claims`)
                 if (stopping) return
                 await rest.put(Routes.applicationGuildCommands(config.applicationId, config.guildId), {
                     body: commands
@@ -279,10 +321,30 @@ function createApp({
 
     listen('guildMemberAdd', async (member) => {
         if (state !== 'ready' || member.guild.id !== config.guildId || member.user.bot) return
-        await membership.syncUser(member.guild, member.id)
+        if (membershipEnabled) await membership.syncUser(member.guild, member.id)
         await shoots.reconcileAll?.()
     })
-    listen('guildMemberUpdate', (_oldMember, member) => syncUnverifiedMember(member))
+    const accessRoles = new Set(
+        [
+            ...(config.shootEligibleRoleIds || [config.memberRoleId, config.execRoleId]),
+            config.adminRoleId,
+            config.productionAccessRoleId
+        ].filter(Boolean)
+    )
+    const hasRole = (member, id) => member?.roles?.cache?.has(id) || member?.roles?.includes?.(id) || false
+    listen('guildMemberUpdate', async (oldMember, member) => {
+        await syncUnverifiedMember(member)
+        if (state !== 'ready' || member.guild.id !== config.guildId || !config.shoots) return
+        const administrator = (value) => value?.permissions?.has?.(PermissionFlagsBits.Administrator) || false
+        if (
+            [...accessRoles].some((id) => hasRole(oldMember, id) !== hasRole(member, id)) ||
+            administrator(oldMember) !== administrator(member)
+        )
+            await shoots.reconcileAll?.()
+    })
+    listen('guildMemberRemove', (member) => {
+        if (state === 'ready' && member.guild.id === config.guildId) return shoots.reconcileAll?.()
+    })
     listen('messageReactionAdd', (reaction, user) => state === 'ready' && shoots.onReaction(reaction, user))
     listen('messageReactionRemove', (reaction, user) => state === 'ready' && shoots.onReaction(reaction, user))
     listen('messageReactionRemoveAll', (message) => state === 'ready' && shoots.onReactionClear(message))
@@ -309,8 +371,18 @@ function createApp({
                 await interaction.reply({ content: uiText('verification.starting'), flags: MessageFlags.Ephemeral })
                 return
             }
+            const membershipInteraction =
+                (interaction.isChatInputCommand() &&
+                    ['verify', 'upload', 'roster', 'postverify', 'testmail'].includes(interaction.commandName)) ||
+                ['tvm:verify', 'tvm:open-code', 'tvm:email', 'tvm:code'].includes(interaction.customId) ||
+                interaction.customId?.startsWith('tvm:roster:')
+            if (!membershipEnabled && membershipInteraction) {
+                await interaction.reply({ content: uiText('verification.disabled'), flags: MessageFlags.Ephemeral })
+                return
+            }
             if (await shoots.handleInteraction(interaction)) return
             if (interaction.isButton()) {
+                if (await handleUploadButton?.(interaction)) return
                 if (interaction.customId === 'tvm:verify') return await interaction.showModal(emailModal())
                 if (interaction.customId === 'tvm:open-code') return await interaction.showModal(codeModal())
                 return
@@ -329,46 +401,60 @@ function createApp({
             if (interaction.commandName === 'upload') return await uploadRoster(interaction)
             if (interaction.commandName === 'roster') return await handleRoster(interaction)
             if (interaction.commandName === 'postverify') {
-                await interaction.reply({ content: uiText('verification.posting'), flags: MessageFlags.Ephemeral })
-                await interaction.channel.send({
-                    content: uiText('verification.post', {
-                        memberRole: roleNames.member,
-                        execRole: roleNames.exec,
-                        adminRole: roleNames.admin
-                    }),
-                    components: [
-                        new ActionRowBuilder().addComponents(
-                            new ButtonBuilder()
-                                .setCustomId('tvm:verify')
-                                .setLabel(uiText('buttons.verify'))
-                                .setStyle(ButtonStyle.Success)
-                        )
-                    ]
+                return await withAdminOperation(async (operation) => {
+                    await interaction.reply({ content: uiText('verification.posting'), flags: MessageFlags.Ephemeral })
+                    await interaction.channel.send({
+                        content: uiText('verification.post', {
+                            memberRole: roleNames.member,
+                            execRole: roleNames.exec,
+                            adminRole: roleNames.admin
+                        }),
+                        components: [
+                            new ActionRowBuilder().addComponents(
+                                new ButtonBuilder()
+                                    .setCustomId('tvm:verify')
+                                    .setLabel(uiText('buttons.verify'))
+                                    .setStyle(ButtonStyle.Success)
+                            )
+                        ]
+                    })
+                    operation.completed()
+                    await operation.confirm(uiText('admin.verificationPosted'), (content) =>
+                        privateReply(interaction, content)
+                    )
                 })
-                return
             }
             if (interaction.commandName === 'testmail') {
-                await interaction.deferReply({ flags: MessageFlags.Ephemeral })
-                const email = normalizeEmail(interaction.options.getString('email'))
-                if (!validEmail(email)) throw new Error(uiText('errors.invalidDestination'))
-                await mail.sendMail({
-                    fromName: uiText('email.fromName'),
-                    to: email,
-                    subject: uiText('email.testSubject'),
-                    text: uiText('email.testBody')
+                return await withAdminOperation(async (operation) => {
+                    await interaction.deferReply({ flags: MessageFlags.Ephemeral })
+                    const email = normalizeEmail(interaction.options.getString('email'))
+                    if (!validEmail(email)) throw new Error(uiText('errors.invalidDestination'))
+                    await mail.sendMail({
+                        fromName: uiText('email.fromName'),
+                        to: email,
+                        subject: uiText('email.testSubject'),
+                        text: uiText('email.testBody')
+                    })
+                    operation.completed()
+                    await operation.confirm(uiText('admin.testmailSent'), (content) =>
+                        privateReply(interaction, content)
+                    )
                 })
-                await privateReply(interaction, uiText('admin.testmailSent'))
             }
         } catch (error) {
             logger.error('[TVM] Interaction failed:', error?.message || error)
             const adminOperation =
-                interaction.isChatInputCommand() &&
-                interaction.commandName !== 'verify' &&
-                interaction.commandName !== 'source'
+                interaction.customId?.startsWith('tvm:roster:') ||
+                (interaction.isChatInputCommand() &&
+                    interaction.commandName !== 'verify' &&
+                    interaction.commandName !== 'source')
             if (!adminOperation) await alertAdmins(uiText('alerts.interactionFailed'))
-            const message = adminOperation
-                ? uiText('admin.operationFailed', { error: String(error?.message || error).slice(0, 1500) })
-                : uiText('verification.failed')
+            const message =
+                error instanceof AdminOperationError
+                    ? error.message
+                    : adminOperation
+                      ? uiText('admin.operationFailed', { error: String(error?.message || error).slice(0, 1500) })
+                      : uiText('verification.failed')
             if (interaction.deferred || interaction.replied)
                 await interaction.editReply({ content: message, components: [] }).catch(() => {})
             else await interaction.reply({ content: message, flags: MessageFlags.Ephemeral }).catch(() => {})
@@ -391,17 +477,18 @@ function createApp({
         rejectReady(new Error('Application is stopping'))
         clearInterval(membershipTimer)
         shoots.stop()
-        membership.stop()
+        membership?.stop()
+        stopRosterCommands?.()
         for (const [event, listener] of listeners) client.off(event, listener)
         let timer
         const drain = (async () => {
             try {
                 await Promise.allSettled([...active])
                 await membershipQueue
-                await membership.drain()
+                await membership?.drain()
                 await healthReporter?.stop()
                 await shoots.drain()
-                await mail.close?.()
+                await mail?.close?.()
                 await store.close()
             } finally {
                 await client.destroy()
@@ -409,7 +496,7 @@ function createApp({
         })()
         const deadline = new Promise((_, reject) => {
             timer = setTimeout(() => {
-                mail.close?.()
+                mail?.close?.()
                 client.destroy()
                 reject(new Error(`Shutdown exceeded ${shutdownTimeoutMs} ms`))
             }, shutdownTimeoutMs)

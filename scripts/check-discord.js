@@ -2,37 +2,34 @@
 'use strict'
 
 const { ApplicationFlagsBitField, PermissionFlagsBits } = require('discord.js')
-const { loadShootConfig } = require('../src/app/config')
+const { loadDiscordConfig } = require('../src/app/config')
 const { BOT_PERMISSIONS, ANNOUNCEMENT_PERMISSIONS } = require('../src/shoots/policy')
-const { required: requireValue } = require('../src/shared/validation')
 const { channelPermissions, assertPrivateAlertChannel } = require('../src/shared/channelPermissions')
-const { uiText } = require('../src/shared/uiText')
+const { unverifiedRoleName } = require('../src/shared/uiText')
 
-const required = (name) => requireValue(process.env, name)
-
-const token = required('DISCORD_BOT_TOKEN')
-const applicationId = required('DISCORD_APPLICATION_ID')
-const guildId = required('TVM_GUILD_ID')
-const memberRoleId = required('TVM_MEMBER_ROLE_ID')
-const execRoleId = required('TVM_EXEC_ROLE_ID')
-const adminRoleId = required('TVM_ADMIN_ROLE_ID')
-const unverifiedRoleId = process.env.TVM_UNVERIFIED_ROLE_ID?.trim()
-const alertChannelId = required('TVM_ADMIN_ALERT_CHANNEL_ID')
-const shoots = loadShootConfig()
-const productionAccessRoleId = shoots
-    ? required('TVM_PRODUCTION_ACCESS_ROLE_ID')
-    : process.env.TVM_PRODUCTION_ACCESS_ROLE_ID?.trim()
 const base = 'https://discord.com/api/v10'
 
-async function get(path) {
-    const response = await fetch(base + path, {
-        headers: { Authorization: `Bot ${token}` },
-        signal: AbortSignal.timeout(12000)
-    })
-    return { status: response.status, data: response.ok ? await response.json() : null }
-}
-
-async function main() {
+async function checkDiscord(config, { request = fetch, log = console.log } = {}) {
+    const {
+        token,
+        applicationId,
+        guildId,
+        memberRoleId,
+        execRoleId,
+        adminRoleId,
+        unverifiedRoleId,
+        alertChannelId,
+        shoots,
+        productionAccessRoleId
+    } = config
+    const membershipEnabled = config.membershipEnabled !== false
+    async function get(path) {
+        const response = await request(base + path, {
+            headers: { Authorization: `Bot ${token}` },
+            signal: AbortSignal.timeout(12000)
+        })
+        return { status: response.status, data: response.ok ? await response.json() : null }
+    }
     const [application, bot, guild, roles, channel] = await Promise.all([
         get('/oauth2/applications/@me'),
         get('/users/@me'),
@@ -43,7 +40,7 @@ async function main() {
     const checks = []
     const check = (label, ok) => {
         checks.push(ok)
-        console.log(`${ok ? 'OK' : 'FAIL'} ${label}`)
+        log(`${ok ? 'OK' : 'FAIL'} ${label}`)
     }
     check('Bot token and application ID', application.data?.id === applicationId && Boolean(bot.data))
     const flags = BigInt(application.data?.flags || 0)
@@ -57,16 +54,25 @@ async function main() {
     let member
     if (bot.data && guild.data) member = await get(`/guilds/${guildId}/members/${bot.data.id}`)
     check('Bot is installed in the server', Boolean(member?.data))
-    const targets = [memberRoleId, execRoleId, adminRoleId].map((id) => roles.data?.find((role) => role.id === id))
-    check('Configured membership, executive, and admin roles exist', targets.every(Boolean))
-    const unverified = unverifiedRoleId
-        ? roles.data?.find((role) => role.id === unverifiedRoleId)
-        : roles.data?.find((role) => role.name === uiText('roles.unverified'))
-    if (unverifiedRoleId || unverified) {
+    const roleIds = membershipEnabled ? [memberRoleId, execRoleId, adminRoleId] : [adminRoleId]
+    const targets = roleIds.map((id) => roles.data?.find((role) => role.id === id))
+    check('Configured management and enabled membership roles exist', targets.every(Boolean))
+    const eligibleRoles = config.shootEligibleRoleIds || roleIds
+    if (shoots)
+        check(
+            'Configured shoot-eligible roles exist',
+            eligibleRoles.every((id) => roles.data?.some((role) => role.id === id))
+        )
+    const unverified = !membershipEnabled
+        ? null
+        : unverifiedRoleId
+          ? roles.data?.find((role) => role.id === unverifiedRoleId)
+          : roles.data?.find((role) => role.name === unverifiedRoleName)
+    if (membershipEnabled && (unverifiedRoleId || unverified)) {
         check(
             'Unverified is a separate role with no permissions and mentions enabled',
             Boolean(unverified) &&
-                ![guildId, memberRoleId, execRoleId, adminRoleId].includes(unverified.id) &&
+                ![guildId, memberRoleId, execRoleId, adminRoleId, ...eligibleRoles].includes(unverified.id) &&
                 !unverified.managed &&
                 BigInt(unverified.permissions) === 0n &&
                 unverified.mentionable
@@ -80,20 +86,22 @@ async function main() {
         check(
             'Production access is a separate, manageable role with no server-wide permissions',
             Boolean(production) &&
-                ![guildId, memberRoleId, execRoleId, adminRoleId, unverified?.id].includes(production.id) &&
+                ![guildId, memberRoleId, execRoleId, adminRoleId, unverified?.id, ...eligibleRoles].includes(
+                    production.id
+                ) &&
                 !production.managed &&
                 BigInt(production.permissions) === 0n &&
                 highest > production.position
         )
-        targets.push(production)
     }
     let basePermissions = BigInt(roles.data?.find((role) => role.id === guildId)?.permissions || 0)
     for (const role of botRoles) basePermissions |= BigInt(role.permissions)
-    check(
-        'Bot has Manage Roles and sits above all assigned roles',
-        targets.every((role) => role && highest > role.position) &&
-            Boolean(basePermissions & PermissionFlagsBits.ManageRoles)
-    )
+    if (membershipEnabled)
+        check(
+            'Bot has Manage Roles and sits above all assigned roles',
+            targets.every((role) => role && highest > role.position) &&
+                Boolean(basePermissions & PermissionFlagsBits.ManageRoles)
+        )
     check('Bot can access the configured alert channel', channel.data?.guild_id === guildId)
     if (channel.data && guild.data && member?.data && roles.data) {
         check(
@@ -136,10 +144,19 @@ async function main() {
             )
         })
     }
-    if (checks.includes(false)) process.exitCode = 1
+    return checks.every(Boolean)
 }
 
-main().catch((error) => {
-    console.error(`Discord setup check failed: ${error.name || 'request error'}`)
-    process.exitCode = 1
-})
+if (require.main === module) {
+    Promise.resolve()
+        .then(() => checkDiscord(loadDiscordConfig()))
+        .then((ok) => {
+            if (!ok) process.exitCode = 1
+        })
+        .catch((error) => {
+            console.error(`Discord setup check failed: ${error.name || 'request error'}`)
+            process.exitCode = 1
+        })
+}
+
+module.exports = { checkDiscord }

@@ -14,8 +14,6 @@ function createMembershipService({
 }) {
     const roleIds = configuredRoleIds(config)
     const roleNames = { member: uiText('roles.member'), exec: uiText('roles.exec'), admin: uiText('roles.admin') }
-    const existingRoles = (member) =>
-        Object.fromEntries(roleKinds.map((kind) => [kind, member.roles.cache.has(roleIds[kind])]))
     const roleSummary = (role) =>
         desiredKinds(role)
             .map((kind) => roleNames[kind])
@@ -151,7 +149,6 @@ function createMembershipService({
     return {
         roleIds,
         roleNames,
-        existingRoles,
         roleSummary,
         addMissingRoles,
         removeManagedRoles,

@@ -8,6 +8,8 @@
 !src/**
 !scripts/
 !scripts/**
+!examples/
+!examples/generic-ui-text.json
 !Dockerfile
 **/*.db
 **/*.db-*

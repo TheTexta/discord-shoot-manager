@@ -24,7 +24,7 @@ function parseMembers(value = '') {
     return [...new Set(ids)]
 }
 
-function parseDetails(fields) {
+function parseDetails(fields, zone = ZONE) {
     let name, location, date, clock, periods
     try {
         name = fields.getTextInputValue('name').trim()
@@ -43,7 +43,7 @@ function parseDetails(fields) {
         throw new ShootInputError(uiText('shoot.invalidDetails'))
     if (!date) return { name, location, call_time: null, join_period }
     const value = `${date} ${clock}`
-    const time = DateTime.fromFormat(value, FORMAT, { zone: ZONE, locale: 'en' })
+    const time = DateTime.fromFormat(value, FORMAT, { zone, locale: 'en' })
     // Luxon normalizes DST gaps forward: round-trip to reject that normalization.
     if (
         !/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(value) ||
@@ -51,7 +51,9 @@ function parseDetails(fields) {
         time.toFormat(FORMAT) !== value ||
         time.getPossibleOffsets().length !== 1
     )
-        throw new ShootInputError(uiText('shoot.invalidTime'))
+        throw new ShootInputError(
+            zone === ZONE ? uiText('shoot.invalidTime') : uiText('shoot.zonedInvalidTime', { timezone: zone })
+        )
     return { name, location, call_time: time.toMillis(), join_period }
 }
 
@@ -95,7 +97,7 @@ function shootCommand() {
     )
 }
 
-function modal(shoot, edit = false) {
+function modal(shoot, edit = false, zone = ZONE) {
     const id = `tvm:shoot:${edit ? 'edit' : 'setup'}:${shoot.id}${edit ? `:${shoot.revision}` : ''}`
     const inputs = [
         ['name', uiText('shoot.nameLabel'), 100, shoot.name, true],
@@ -103,14 +105,14 @@ function modal(shoot, edit = false) {
             'date',
             uiText('shoot.dateLabel'),
             10,
-            shoot.call_time != null ? DateTime.fromMillis(shoot.call_time, { zone: ZONE }).toFormat('yyyy-MM-dd') : '',
+            shoot.call_time != null ? DateTime.fromMillis(shoot.call_time, { zone }).toFormat('yyyy-MM-dd') : '',
             false
         ],
         [
             'time',
-            uiText('shoot.timeLabel'),
+            zone === ZONE ? uiText('shoot.timeLabel') : uiText('shoot.zonedTimeLabel', { timezone: zone }),
             5,
-            shoot.call_time != null ? DateTime.fromMillis(shoot.call_time, { zone: ZONE }).toFormat('HH:mm') : '',
+            shoot.call_time != null ? DateTime.fromMillis(shoot.call_time, { zone }).toFormat('HH:mm') : '',
             false
         ],
         ['location', uiText('shoot.locationLabel'), 200, shoot.location, true]

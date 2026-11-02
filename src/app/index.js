@@ -13,15 +13,17 @@ async function main() {
     process.umask(0o077)
     validateUiText()
     const config = loadConfig()
-    const store = new Store(config.databasePath, config.codeSecret)
-    const mail = new SelfSmtpProvider({
-        smtpHost: config.smtpHost,
-        smtpPort: config.smtpPort,
-        isSecure: true,
-        username: 'resend',
-        password: config.resendApiKey,
-        fromAddress: config.smtpFrom
-    })
+    const store = new Store(config.databasePath, config.codeSecret, { membershipEnabled: config.membershipEnabled })
+    const mail = config.membershipEnabled
+        ? new SelfSmtpProvider({
+              smtpHost: config.smtpHost,
+              smtpPort: config.smtpPort,
+              isSecure: true,
+              username: 'resend',
+              password: config.resendApiKey,
+              fromAddress: config.smtpFrom
+          })
+        : null
     const client = new Client({
         intents: [
             GatewayIntentBits.Guilds,

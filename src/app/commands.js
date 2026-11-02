@@ -5,7 +5,7 @@ const { SlashCommandBuilder } = require('discord.js')
 const { uiText } = require('../shared/uiText')
 const { shootCommand } = require('../shoots/forms')
 
-function buildCommands(shootsEnabled) {
+function buildCommands(shootsEnabled, membershipEnabled = true) {
     const commands = [
         new SlashCommandBuilder().setName('verify').setDescription(uiText('commands.verify')),
         new SlashCommandBuilder().setName('source').setDescription(uiText('commands.source')),
@@ -59,7 +59,9 @@ function buildCommands(shootsEnabled) {
                         o.setName('user').setDescription(uiText('commands.newAccount')).setRequired(true)
                     )
             )
-    ].map((command) => command.toJSON())
+    ]
+        .filter((command) => membershipEnabled || command.name === 'source')
+        .map((command) => command.toJSON())
     if (shootsEnabled) commands.push(shootCommand())
     return commands
 }

@@ -7,7 +7,9 @@ function checkHealth(value, now = Date.now()) {
     const fresh = (at, age) => Number.isFinite(at) && at <= now && now - at < age
     if (!fresh(value?.at, 60000)) throw new Error('Health heartbeat is stale')
     if (value.state !== 'ready' || !value.connected) throw new Error('Discord runtime is not ready and connected')
-    if (!fresh(value.membershipLastSuccessAt, 2 * 3600000)) throw new Error('Membership reconciliation is overdue')
+    // Old heartbeats did not include this flag and still require membership freshness.
+    if (value.membershipEnabled !== false && !fresh(value.membershipLastSuccessAt, 2 * 3600000))
+        throw new Error('Membership reconciliation is overdue')
     if (value.shootsEnabled && !fresh(value.shootLastSuccessAt, 5 * 60000))
         throw new Error('Shoot reconciliation is overdue')
     return true

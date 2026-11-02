@@ -13,7 +13,8 @@ function createTextRenderer(text) {
     }
 }
 
-const text = require('../../ui-text.json')
+const fs = require('node:fs')
+const defaults = require('../../ui-text.json')
 const schema = require('./uiTextSchema.json')
 
 const shootLimits = {
@@ -34,6 +35,7 @@ const shootLimits = {
     nameLabel: 45,
     dateLabel: 45,
     timeLabel: 45,
+    zonedTimeLabel: 45,
     locationLabel: 45,
     joinLabel: 45,
     joinDescription: 100,
@@ -44,7 +46,7 @@ const shootLimits = {
     joinNever: 100
 }
 
-function validateUiText(candidate = text) {
+function validateUiText(candidate = defaults) {
     for (const [key, required] of Object.entries(schema)) {
         const template = key.split('.').reduce((value, part) => value?.[part], candidate)
         if (typeof template !== 'string' || !template.trim()) throw new Error(`Missing UI text: ${key}`)
@@ -67,5 +69,37 @@ function validateUiText(candidate = text) {
     return candidate
 }
 
+function loadUiText(filename) {
+    const candidate = structuredClone(defaults)
+    if (filename) {
+        let overrides
+        try {
+            overrides = JSON.parse(fs.readFileSync(filename, 'utf8'))
+        } catch {
+            throw new Error('UI_TEXT_PATH must identify a readable JSON override file')
+        }
+        if (!overrides || typeof overrides !== 'object' || Array.isArray(overrides))
+            throw new Error('UI_TEXT_PATH must contain a JSON object')
+        for (const [section, values] of Object.entries(overrides)) {
+            if (!Object.hasOwn(candidate, section) || !values || typeof values !== 'object' || Array.isArray(values))
+                throw new Error(`Invalid UI text section: ${section}`)
+            for (const [name, value] of Object.entries(values)) {
+                const key = `${section}.${name}`
+                if (!Object.hasOwn(schema, key)) throw new Error(`Unknown UI text override: ${key}`)
+                candidate[section][name] = value
+            }
+        }
+    }
+    return validateUiText(candidate)
+}
+
+// One deployment per process. Resolve immutable overrides once, just like the base JSON.
+const text = loadUiText(process.env.UI_TEXT_PATH?.trim())
 const uiText = createTextRenderer(text)
-module.exports = { uiText, createTextRenderer, validateUiText }
+module.exports = {
+    uiText,
+    createTextRenderer,
+    validateUiText,
+    loadUiText,
+    unverifiedRoleName: defaults.roles.unverified
+}
