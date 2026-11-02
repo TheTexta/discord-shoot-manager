@@ -1,6 +1,6 @@
 # TVM deployment profile
 
-Status: compatibility profile for the existing installation, not a fresh production inspection. Local implementation does not establish which commit/configuration is deployed.
+Status: runtime release `e06dbf3` deployed and bot-setup verified on 2026-11-02; see the [rollout evidence](../plans/project-rename.md#completed-rollout-evidence). The human-channel policies below remain a compatibility record, not a comprehensive fresh audit of every account/child channel.
 
 ## Identity and configuration
 

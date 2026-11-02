@@ -1,6 +1,6 @@
 # Generalisation implementation status
 
-Status: phases 1–3 implemented; publishing, repository rename, and TVM rollout now separately approved. Production verification is recorded in the [rename/rollout record](project-rename.md). Scope is defined by [decision 0001](../decisions/0001-platform-scope.md) and the later [identity decision](../decisions/0002-project-identity.md).
+Status: phases 1–3 implemented, published, and deployed to the existing TVM installation under the separately approved repository rename. Production verification is recorded in the [rename/rollout record](project-rename.md). Scope is defined by [decision 0001](../decisions/0001-platform-scope.md) and the later [identity decision](../decisions/0002-project-identity.md).
 
 | Phase                                 | Implementation                                                                                                                                                                                                                                                                                                   |
 | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
