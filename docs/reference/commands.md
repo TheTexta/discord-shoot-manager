@@ -12,15 +12,17 @@ Commands register only in the configured guild after startup finishes. `/source`
 
 All these commands require the configured bot-admin role or Discord Administrator permission and an accessible server text channel. See [shoot workflows](../guides/shoots.md).
 
-| Command         | Options / purpose                                                     |
-| --------------- | --------------------------------------------------------------------- |
-| `/shoot setup`  | Optional `members`: mention up to 70 members; prepare a private form. |
-| `/shoot edit`   | Edit current shoot details/joining window.                            |
-| `/shoot crew`   | Private list of invited/reaction-joined participants.                 |
-| `/shoot add`    | Required `user`; add an eligible member to an open shoot.             |
-| `/shoot remove` | Required `user`; remove from open/archive; organiser protected.       |
-| `/shoot close`  | Read-only archive for ordinary participants.                          |
-| `/shoot reopen` | Restore an active chat without resetting its joining clock.           |
+| Command         | Options / purpose                                                        |
+| --------------- | ------------------------------------------------------------------------ |
+| `/shoot setup`  | Optional `members`: mention up to 70 members; prepare a private form.    |
+| `/shoot edit`   | Edit current shoot details/joining window.                               |
+| `/shoot crew`   | Private list of invited/reaction-joined participants.                    |
+| `/shoot add`    | Required `user`; add an eligible or invite-only member to an open shoot. |
+| `/shoot remove` | Required `user`; remove from open/archive; organiser protected.          |
+| `/shoot close`  | Read-only archive for ordinary participants.                             |
+| `/shoot reopen` | Restore an active chat without resetting its joining clock.              |
+
+Setup/edit accept literal, optional date and time text (200 characters each), without format validation or timezone conversion. Both blank means Unscheduled. Direct invitations can include configured invite-only roles; those roles alone cannot join through reactions. Existing timestamp schedules stay unchanged unless their schedule fields change.
 
 ## Membership enabled
 

@@ -20,10 +20,13 @@ Neutral and legacy names are aliases. Values are trimmed; blank values count as 
 | `SHOOT_CATEGORY_ID`             | `TVM_SHOOT_CATEGORY_ID`             | Active category; distinct from invitation and archive IDs.                                                                                   |
 | `SHOOT_ARCHIVE_CATEGORY_ID`     | `TVM_SHOOT_ARCHIVE_CATEGORY_ID`     | Archive category.                                                                                                                            |
 | `SHOOT_ELIGIBLE_ROLE_IDS`       | —                                   | Comma-separated role IDs. Required in shoot-only mode. With membership enabled, defaults to member, executive, and admin IDs.                |
-| `SHOOT_TIMEZONE`                | —                                   | `America/Toronto`; valid IANA timezone for input and editing. Saved instants stay unchanged.                                                 |
+| `SHOOT_INVITE_ONLY_ROLE_IDS`    | —                                   | Optional additional comma-separated role IDs for admin invitations only; defaults empty. Does not grant reaction joining.                    |
+| `SHOOT_TIMEZONE`                | —                                   | `America/Toronto`; valid IANA timezone for prefilling legacy timestamp schedules. Free-text schedules are not converted.                     |
 | `UI_TEXT_PATH`                  | —                                   | Optional partial JSON override file, relative to the process working directory or absolute. Defaults to existing TVM copy.                   |
 
 `@everyone`, duplicate eligibility IDs, invalid snowflakes, partial shoot configuration, and conflicting role purposes are rejected. Discord Administrator permission still bypasses ordinary eligibility; bots cannot join. An explicit eligible-role list replaces the membership-derived list: the bot-admin role is not implicitly added to it. Organisers retain their existing access exception. Production access alone grants neither management authority nor eligibility.
+
+Invite-only roles are additive for direct invitations, not replacements for ordinary eligibility. Unverified and production-access roles cannot be invite-only roles. Startup and `discord:check` validate configured roles; role changes trigger shoot reconciliation. Roles used only for admission are not assigned by the bot and need not sit below it. Keep Service Request out of `SHOOT_ELIGIBLE_ROLE_IDS` if that role must remain invite-only. See [TVM's deployment profile](../deployments/tvm.md#service-request-invitations) for its configured role ID and pending production enablement.
 
 Compose intentionally retains service `tvm-verification`, volume `tvm_data`, and database `/usr/app/config/tvm.db`; its database location is fixed inside the persistent mount. Neutral database paths apply to direct Node/Docker/Coolify configuration, not the supplied Compose service.
 
@@ -59,4 +62,4 @@ Overriding `roles.unverified` changes presentation, not managed-role discovery. 
 }
 ```
 
-Non-Toronto forms use `shoot.zonedTimeLabel` and `shoot.zonedInvalidTime`, each with `{timezone}`; Toronto preserves the existing keys/copy. Keep rendered modal labels within Discord limits. Publish a new verification post after wording changes if desired. Recovery markers, component identifiers, and database metadata are not editable branding.
+Schedule forms use `shoot.dateLabel` and `shoot.timeLabel` for all timezones; remove strict-format/noon instructions from any existing overrides. The old `shoot.invalidTime`, `shoot.zonedTimeLabel`, and `shoot.zonedInvalidTime` keys remain accepted for overlay compatibility but are no longer used. Keep rendered modal labels within Discord limits. Publish a new verification post after wording changes if desired. Recovery markers, component identifiers, and database metadata are not editable branding.

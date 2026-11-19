@@ -29,12 +29,13 @@ test('shoot configuration is optional, complete, distinct, and validates snowfla
     assert.equal(remove.options[0].required, true)
 })
 
-test('validates mention input and Toronto calendar/DST times', () => {
+test('validates mentions and accepts literal schedule text without calendar or DST parsing', () => {
     assert.deepEqual(parseMembers(`<@${IDS.invited}>, <@!${IDS.joined}> <@${IDS.invited}>`), [IDS.invited, IDS.joined])
     assert.deepEqual(parseMembers(''), [])
     for (const input of ['@everyone', 'Alice', `<@&${IDS.invited}>`, '<@123>', `<@${IDS.joined}> unwanted`])
         assert.throws(() => parseMembers(input))
-    assert.equal(parseDetails(fields()).call_time, Date.parse('2026-10-15T17:30:00Z'))
+    assert.equal(parseDetails(fields()).call_date_text, '2026-10-15')
+    assert.equal(parseDetails(fields()).call_time_text, '13:30')
     for (const time of [
         '2026-02-30 10:00',
         '2026-03-08 02:30',
@@ -42,9 +43,13 @@ test('validates mention input and Toronto calendar/DST times', () => {
         '2026-10-15 25:00',
         '2026-10-5 13:30'
     ]) {
-        assert.throws(() => parseDetails(fields('Shoot', time)))
+        const details = parseDetails(fields('Shoot', time))
+        assert.equal(details.call_time, null)
+        assert.equal(`${details.call_date_text} ${details.call_time_text}`, time)
     }
-    assert.equal(parseDetails(fields('Shoot', '2026-12-15 13:30')).call_time, Date.parse('2026-12-15T18:30:00Z'))
+    const literal = parseDetails(fields('Shoot', { date: 'next Friday', time: 'around 6 pm' }))
+    assert.equal(literal.call_date_text, 'next Friday')
+    assert.equal(literal.call_time_text, 'around 6 pm')
     assert.throws(() => parseDetails(fields('', '2026-10-15 13:30')))
 })
 
@@ -75,7 +80,7 @@ test('edit updates both messages without notifications and rejects stale forms; 
     assert.deepEqual(crew.replies.at(-1).allowedMentions, { parse: [] })
 })
 
-test('expired, cross-channel, invalid-time, and replayed setup forms cannot create additional chats', async (t) => {
+test('expired, cross-channel, oversized, and replayed forms cannot create or change chats', async (t) => {
     const f = await fixture(t)
     const setup = f.interaction({ command: 'setup' })
     await f.service.handleInteraction(setup)
@@ -95,16 +100,17 @@ test('expired, cross-channel, invalid-time, and replayed setup forms cannot crea
     await f.service.handleInteraction(wrongChannel)
     assert.ok(wrongChannel.replies.at(-1).content.includes('expired'))
     const invalid = f.interaction({ customId: edit.modal.custom_id, channelId: created.shoot.channel_id })
-    invalid.fields = fields('New', '2026-11-01 01:30')
+    invalid.fields = fields('New', { date: 'x'.repeat(201), time: 'whenever' })
     await f.service.handleInteraction(invalid)
     assert.equal((await f.store.getShoot(created.id, IDS.guild)).name, 'TVM film')
 })
 
-test('blank time means Toronto noon and blank date means no scheduled timestamp', async (t) => {
-    assert.equal(parseDetails(fields('Shoot', '2026-10-15')).call_time, Date.parse('2026-10-15T16:00:00Z'))
-    assert.equal(parseDetails(fields('Shoot', '2026-12-15')).call_time, Date.parse('2026-12-15T17:00:00Z'))
+test('blank date or time is preserved without noon defaults or discarding time-only entries', async (t) => {
+    assert.equal(parseDetails(fields('Shoot', '2026-10-15')).call_time_text, '')
+    assert.equal(parseDetails(fields('Shoot', '2026-12-15')).call_date_text, '2026-12-15')
     assert.equal(parseDetails(fields('Shoot', '')).call_time, null)
     assert.equal(parseDetails(fields('Shoot', ' 09:30')).call_time, null)
+    assert.equal(parseDetails(fields('Shoot', ' 09:30')).call_time_text, '09:30')
     for (const period of ['day', 'two_days', 'week', 'month', 'never'])
         assert.equal(parseDetails(fields('Shoot', '', 'Studio', period)).join_period, period)
     assert.throws(() => parseDetails(fields('Shoot', '', 'Studio', 'invalid')), /Choose/)

@@ -27,7 +27,7 @@ const IDS = {
     productionRole: '100000000000000015'
 }
 const fields = (name = 'TVM film', value = '2026-10-15 13:30', location = 'Studio', period = 'day') => {
-    const [date = '', time = ''] = value.split(' ')
+    const [date = '', time = ''] = typeof value === 'string' ? value.split(' ') : [value.date, value.time]
     return { getTextInputValue: (key) => ({ name, date, time, location })[key], getStringSelectValues: () => [period] }
 }
 

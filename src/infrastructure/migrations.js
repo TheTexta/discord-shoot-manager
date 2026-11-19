@@ -91,6 +91,15 @@ const migrations = [
         version: 7,
         name: 'authoritative-roster-snapshots',
         apply: (store) => addColumns(store, [['email_roster_meta', 'authoritative', 'INTEGER NOT NULL DEFAULT 0']])
+    },
+    {
+        version: 8,
+        name: 'free-text-shoot-schedules',
+        apply: (store) =>
+            addColumns(store, [
+                ['shoots', 'call_date_text', 'TEXT'],
+                ['shoots', 'call_time_text', 'TEXT']
+            ])
     }
 ]
 

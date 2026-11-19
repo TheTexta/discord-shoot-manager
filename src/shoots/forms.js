@@ -14,7 +14,14 @@ const { uiText } = require('../shared/uiText')
 const ShootInputError = require('./ShootInputError')
 const { JOIN_PERIODS, PERIOD_TEXT } = require('./policy')
 const ZONE = 'America/Toronto'
-const FORMAT = 'yyyy-MM-dd HH:mm'
+const SCHEDULE_TEXT_LIMIT = 200
+
+function scheduleInputs(shoot, zone) {
+    if (shoot.call_date_text != null || shoot.call_time_text != null)
+        return { date: shoot.call_date_text || '', time: shoot.call_time_text || '' }
+    const time = shoot.call_time != null ? DateTime.fromMillis(shoot.call_time, { zone }) : null
+    return { date: time?.toFormat('yyyy-MM-dd') || '', time: time?.toFormat('HH:mm') || '' }
+}
 
 function parseMembers(value = '') {
     const ids = [...value.matchAll(/<@!?(\d{17,20})>/g)].map((match) => match[1])
@@ -24,13 +31,13 @@ function parseMembers(value = '') {
     return [...new Set(ids)]
 }
 
-function parseDetails(fields, zone = ZONE) {
+function parseDetails(fields, zone = ZONE, shoot = null) {
     let name, location, date, clock, periods
     try {
         name = fields.getTextInputValue('name').trim()
         location = fields.getTextInputValue('location').trim()
         date = fields.getTextInputValue('date').trim()
-        clock = fields.getTextInputValue('time').trim() || '12:00'
+        clock = fields.getTextInputValue('time').trim()
         periods = fields.getStringSelectValues('join_period')
     } catch {
         // Forms opened before a deployment may still use the previous input layout.
@@ -39,22 +46,26 @@ function parseDetails(fields, zone = ZONE) {
     if (periods.length !== 1 || !Object.hasOwn(JOIN_PERIODS, periods[0]))
         throw new ShootInputError(uiText('shoot.invalidJoinPeriod'))
     const join_period = periods[0]
-    if (!name || name.length > 100 || !location || location.length > 200)
-        throw new ShootInputError(uiText('shoot.invalidDetails'))
-    if (!date) return { name, location, call_time: null, join_period }
-    const value = `${date} ${clock}`
-    const time = DateTime.fromFormat(value, FORMAT, { zone, locale: 'en' })
-    // Luxon normalizes DST gaps forward: round-trip to reject that normalization.
     if (
-        !/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(value) ||
-        !time.isValid ||
-        time.toFormat(FORMAT) !== value ||
-        time.getPossibleOffsets().length !== 1
+        !name ||
+        name.length > 100 ||
+        !location ||
+        location.length > 200 ||
+        date.length > SCHEDULE_TEXT_LIMIT ||
+        clock.length > SCHEDULE_TEXT_LIMIT
     )
-        throw new ShootInputError(
-            zone === ZONE ? uiText('shoot.invalidTime') : uiText('shoot.zonedInvalidTime', { timezone: zone })
-        )
-    return { name, location, call_time: time.toMillis(), join_period }
+        throw new ShootInputError(uiText('shoot.invalidDetails'))
+    // Do not convert legacy timestamps when an edit changes only other details.
+    const original = shoot ? scheduleInputs(shoot, zone) : null
+    if (
+        shoot?.call_time != null &&
+        shoot.call_date_text == null &&
+        shoot.call_time_text == null &&
+        date === original.date &&
+        clock === original.time
+    )
+        return { name, location, call_time: shoot.call_time, call_date_text: null, call_time_text: null, join_period }
+    return { name, location, call_time: null, call_date_text: date, call_time_text: clock, join_period }
 }
 
 function shootCommand() {
@@ -99,22 +110,11 @@ function shootCommand() {
 
 function modal(shoot, edit = false, zone = ZONE) {
     const id = `tvm:shoot:${edit ? 'edit' : 'setup'}:${shoot.id}${edit ? `:${shoot.revision}` : ''}`
+    const schedule = scheduleInputs(shoot, zone)
     const inputs = [
         ['name', uiText('shoot.nameLabel'), 100, shoot.name, true],
-        [
-            'date',
-            uiText('shoot.dateLabel'),
-            10,
-            shoot.call_time != null ? DateTime.fromMillis(shoot.call_time, { zone }).toFormat('yyyy-MM-dd') : '',
-            false
-        ],
-        [
-            'time',
-            zone === ZONE ? uiText('shoot.timeLabel') : uiText('shoot.zonedTimeLabel', { timezone: zone }),
-            5,
-            shoot.call_time != null ? DateTime.fromMillis(shoot.call_time, { zone }).toFormat('HH:mm') : '',
-            false
-        ],
+        ['date', uiText('shoot.dateLabel'), SCHEDULE_TEXT_LIMIT, schedule.date, false],
+        ['time', uiText('shoot.timeLabel'), SCHEDULE_TEXT_LIMIT, schedule.time, false],
         ['location', uiText('shoot.locationLabel'), 200, shoot.location, true]
     ]
     const select = new StringSelectMenuBuilder()

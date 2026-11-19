@@ -127,6 +127,42 @@ test('startup rejects admission through the automatically discovered Unverified 
     await f.app.shutdown()
 })
 
+test('startup rejects invite-only admission through automatically discovered Unverified', async () => {
+    const id = '100000000000000015'
+    const f = fixture({ config: { shootInviteOnlyRoleIds: [id] } })
+    f.unverifiedRoles.initialize = async () => ({ id })
+    await assert.rejects(f.app.start(), /SHOOT_INVITE_ONLY_ROLE_IDS must not include Unverified/)
+    await f.app.shutdown()
+})
+
+test('startup checks invite-only roles and their changes immediately schedule shoot reconciliation', async () => {
+    const id = '100000000000000015'
+    const config = {
+        membershipEnabled: false,
+        shoots: {},
+        shootEligibleRoleIds: [adminId],
+        shootInviteOnlyRoleIds: [id]
+    }
+    const missing = fixture({ config })
+    const guild = await missing.client.guilds.fetch(guildId)
+    const fetchRole = guild.roles.fetch
+    guild.roles.fetch = async (roleId) => (roleId === id ? null : fetchRole(roleId))
+    await assert.rejects(missing.app.start(), /roles are missing or unsafe/)
+    await missing.app.shutdown()
+    const f = fixture({ config })
+    let reconciled = 0
+    f.shoots.reconcileAll = async () => {
+        reconciled++
+    }
+    await f.app.start()
+    const member = { guild: { id: guildId }, id: userId, user: { bot: false } }
+    const update = f.client.listeners('guildMemberUpdate')[0]
+    await update({ ...member, roles: [] }, { ...member, roles: [id] })
+    await update({ ...member, roles: [id] }, { ...member, roles: [] })
+    assert.equal(reconciled, 2)
+    await f.app.shutdown()
+})
+
 test('shoot-only runtime has no membership dependencies, rejects stale interactions and drains normally', async () => {
     const forbidden = () => {
         throw new Error('Membership must not run')

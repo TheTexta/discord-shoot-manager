@@ -32,4 +32,4 @@ npm start
 
 Use representative test accounts to check: a permitted organiser can create a shoot; eligible members join/leave; outsiders cannot read private chats; closing gives ordinary participants a read-only archive; production visibility is separate from management. For membership, test generic verification feedback and complete-roster preview/confirmation with synthetic addresses you control.
 
-For wording, copy [the generic override example](../../examples/generic-ui-text.json), edit only the values you need, and set `UI_TEXT_PATH`. Do not edit a source fork for each organisation. Set `SHOOT_TIMEZONE` to a valid IANA zone; existing TVM setups retain Toronto. See [deployment](../operations/deployment.md) before hosting the bot.
+For wording, copy [the generic override example](../../examples/generic-ui-text.json), edit only the values you need, and set `UI_TEXT_PATH`. Do not edit a source fork for each organisation. `SHOOT_TIMEZONE` must remain a valid IANA zone for prefilling legacy schedules; existing TVM setups retain Toronto. New date/time entries are literal text. See [deployment](../operations/deployment.md) before hosting the bot.

@@ -104,6 +104,22 @@ test('Unverified cannot be an eligible shoot role, even with an explicit admissi
     )
 })
 
+test('invite-only roles are optional, additive, validated and separate from Unverified/production access', () => {
+    const id = '100000000000000020'
+    assert.deepEqual(loadConfig(env).shootInviteOnlyRoleIds, [])
+    const config = loadConfig({ ...env, SHOOT_INVITE_ONLY_ROLE_IDS: ` ${id} ` })
+    assert.deepEqual(config.shootInviteOnlyRoleIds, [id])
+    assert.deepEqual(config.shootEligibleRoleIds, loadConfig(env).shootEligibleRoleIds)
+    assert.deepEqual(loadConfig({ ...env, SHOOT_INVITE_ONLY_ROLE_IDS: ' ' }).shootInviteOnlyRoleIds, [])
+    for (const value of ['bad', `${id},`, `${id},${id}`, env.TVM_GUILD_ID])
+        assert.throws(() => loadConfig({ ...env, SHOOT_INVITE_ONLY_ROLE_IDS: value }), /SHOOT_INVITE_ONLY_ROLE_IDS/)
+    assert.throws(() => loadConfig({ ...env, SHOOT_INVITE_ONLY_ROLE_IDS: id, UNVERIFIED_ROLE_ID: id }), /UNVERIFIED/)
+    assert.throws(
+        () => loadConfig({ ...env, SHOOT_INVITE_ONLY_ROLE_IDS: id, PRODUCTION_ACCESS_ROLE_ID: id }),
+        /PRODUCTION_ACCESS/
+    )
+})
+
 test('configuration uses injected environment, ignores retired revocation settings, and rejects unsafe IDs', () => {
     for (const value of ['true', 'false', 'yes']) {
         assert.equal(loadConfig({ ...env, TVM_AUTO_ROLE_REVOCATION: value }).autoRoleRevocation, undefined)

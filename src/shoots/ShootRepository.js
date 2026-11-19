@@ -53,6 +53,8 @@ class ShootRepository extends Repository {
         const allowed = [
             'name',
             'call_time',
+            'call_date_text',
+            'call_time_text',
             'location',
             'status',
             'channel_id',

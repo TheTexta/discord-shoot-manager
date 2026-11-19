@@ -51,6 +51,8 @@ Membership commands appear only with membership enabled; `/shoot` appears only w
 
 Management commands require the configured Admin Team role or Discord Administrator permission. The manually assigned `all production access` role controls visibility and participation across all shoots, Broadcast, and Post Credits; Admin Team alone does not grant that visibility. Admins retain access to shoots they organize or join.
 
+Optional `SHOOT_INVITE_ONLY_ROLE_IDS` adds roles admins may invite without permitting reaction self-joining (TVM's Service Request policy). Shoot creation/editing accepts literal date/time text such as `next Friday` and `around 6 pm`; old timestamp schedules remain unchanged until their schedule is edited. See [shoot workflows](docs/guides/shoots.md).
+
 | Command                                                                                                      | Purpose                                            |
 | ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------- |
 | `/verify`                                                                                                    | Request a code for your roster email.              |

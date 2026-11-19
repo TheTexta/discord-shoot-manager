@@ -132,3 +132,33 @@ test('Discord diagnostics reject admission through a discovered Unverified role'
     assert.equal(await checkDiscord(f.config, f.options), false)
     assert.ok(f.logs.some((line) => line.startsWith('FAIL Unverified')))
 })
+
+test('diagnostics validate invite-only role existence without requiring hierarchy for an unassigned role', async () => {
+    const f = fixture()
+    const id = f.id(13)
+    f.config.shootInviteOnlyRoleIds = [id]
+    assert.equal(await checkDiscord(f.config, f.options), false)
+    assert.ok(f.logs.includes('FAIL Configured shoot invite-only roles exist'))
+    f.responses.get(`/guilds/${f.config.guildId}/roles`).push({ id, position: 100, managed: true, permissions: '0' })
+    assert.equal(await checkDiscord(f.config, f.options), true, f.logs.join('\n'))
+})
+
+test('diagnostics reject invite-only access through discovered Unverified or production access', async () => {
+    for (const kind of ['unverified', 'production']) {
+        const f = fixture({ membership: true })
+        const roles = f.responses.get(`/guilds/${f.config.guildId}/roles`)
+        if (kind === 'unverified') {
+            const id = f.id(13)
+            roles.push({
+                id,
+                name: require('../ui-text.json').roles.unverified,
+                position: 1,
+                managed: false,
+                mentionable: true,
+                permissions: '0'
+            })
+            f.config.shootInviteOnlyRoleIds = [id]
+        } else f.config.shootInviteOnlyRoleIds = [f.config.productionAccessRoleId]
+        assert.equal(await checkDiscord(f.config, f.options), false)
+    }
+})

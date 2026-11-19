@@ -73,6 +73,8 @@ function loadDiscordConfig(env = process.env) {
     if (membershipRoles.includes(config.guildId)) throw new Error('Membership role IDs cannot reference @everyone')
     const eligible = env.SHOOT_ELIGIBLE_ROLE_IDS?.trim()
     config.shootEligibleRoleIds = eligible ? eligible.split(',').map((id) => id.trim()) : enabled ? membershipRoles : []
+    const inviteOnly = env.SHOOT_INVITE_ONLY_ROLE_IDS?.trim()
+    config.shootInviteOnlyRoleIds = inviteOnly ? inviteOnly.split(',').map((id) => id.trim()) : []
     if (config.shoots && config.shootEligibleRoleIds.length === 0)
         throw new Error('SHOOT_ELIGIBLE_ROLE_IDS is required for shoot-only deployments')
     if (
@@ -80,6 +82,11 @@ function loadDiscordConfig(env = process.env) {
         new Set(config.shootEligibleRoleIds).size !== config.shootEligibleRoleIds.length
     )
         throw new Error('Invalid or duplicate SHOOT_ELIGIBLE_ROLE_IDS; @everyone is not allowed')
+    if (
+        config.shootInviteOnlyRoleIds.some((id) => !validSnowflake(id) || id === config.guildId) ||
+        new Set(config.shootInviteOnlyRoleIds).size !== config.shootInviteOnlyRoleIds.length
+    )
+        throw new Error('Invalid or duplicate SHOOT_INVITE_ONLY_ROLE_IDS; @everyone is not allowed')
     if (!IANAZone.isValidZone(config.shootTimezone)) throw new Error('Invalid SHOOT_TIMEZONE; use an IANA timezone')
     if (!enabled && !config.shoots) throw new Error('Enable shoots or membership; both capabilities cannot be disabled')
     if (
@@ -88,7 +95,8 @@ function loadDiscordConfig(env = process.env) {
             [config.guildId, config.memberRoleId, config.execRoleId, config.adminRoleId].includes(
                 config.unverifiedRoleId
             ) ||
-            config.shootEligibleRoleIds.includes(config.unverifiedRoleId))
+            config.shootEligibleRoleIds.includes(config.unverifiedRoleId) ||
+            config.shootInviteOnlyRoleIds.includes(config.unverifiedRoleId))
     ) {
         throw new Error('Invalid or conflicting TVM_UNVERIFIED_ROLE_ID')
     }
@@ -103,7 +111,8 @@ function loadDiscordConfig(env = process.env) {
                 config.execRoleId,
                 config.adminRoleId,
                 config.unverifiedRoleId,
-                ...config.shootEligibleRoleIds
+                ...config.shootEligibleRoleIds,
+                ...config.shootInviteOnlyRoleIds
             ].includes(config.productionAccessRoleId))
     ) {
         throw new Error('Invalid or conflicting TVM_PRODUCTION_ACCESS_ROLE_ID')

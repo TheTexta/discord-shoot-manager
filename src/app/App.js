@@ -127,7 +127,11 @@ function createApp({
     const roleIds = membershipEnabled ? configuredRoleIds(config) : {}
     if (membershipEnabled)
         unverifiedRoles ||= new UnverifiedRoleManager(config.guildId, config.unverifiedRoleId, [
-            ...new Set([...Object.values(roleIds), ...(config.shootEligibleRoleIds || [])])
+            ...new Set([
+                ...Object.values(roleIds),
+                ...(config.shootEligibleRoleIds || []),
+                ...(config.shootInviteOnlyRoleIds || [])
+            ])
         ])
     let unverifiedReady = false
     const membership = membershipEnabled
@@ -202,7 +206,8 @@ function createApp({
                 const neededRoles = [
                     ...new Set([
                         ...(membershipEnabled ? roleKinds.map((kind) => roleIds[kind]) : [config.adminRoleId]),
-                        ...(config.shoots ? config.shootEligibleRoleIds || [] : [])
+                        ...(config.shoots ? config.shootEligibleRoleIds || [] : []),
+                        ...(config.shoots ? config.shootInviteOnlyRoleIds || [] : [])
                     ])
                 ]
                 const roles = await Promise.all(neededRoles.map((id) => guild.roles.fetch(id)))
@@ -263,6 +268,9 @@ function createApp({
                     }
                     if (config.shootEligibleRoleIds?.includes(unverifiedRole.id)) {
                         throw new Error('SHOOT_ELIGIBLE_ROLE_IDS must not include Unverified')
+                    }
+                    if (config.shootInviteOnlyRoleIds?.includes(unverifiedRole.id)) {
+                        throw new Error('SHOOT_INVITE_ONLY_ROLE_IDS must not include Unverified')
                     }
                     unverifiedReady = true
                     const result = await reconcile(guild)
@@ -327,6 +335,7 @@ function createApp({
     const accessRoles = new Set(
         [
             ...(config.shootEligibleRoleIds || [config.memberRoleId, config.execRoleId]),
+            ...(config.shootInviteOnlyRoleIds || []),
             config.adminRoleId,
             config.productionAccessRoleId
         ].filter(Boolean)

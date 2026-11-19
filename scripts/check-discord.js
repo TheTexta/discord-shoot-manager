@@ -58,10 +58,16 @@ async function checkDiscord(config, { request = fetch, log = console.log } = {})
     const targets = roleIds.map((id) => roles.data?.find((role) => role.id === id))
     check('Configured management and enabled membership roles exist', targets.every(Boolean))
     const eligibleRoles = config.shootEligibleRoleIds || roleIds
+    const inviteOnlyRoles = config.shootInviteOnlyRoleIds || []
     if (shoots)
         check(
             'Configured shoot-eligible roles exist',
             eligibleRoles.every((id) => roles.data?.some((role) => role.id === id))
+        )
+    if (shoots && inviteOnlyRoles.length)
+        check(
+            'Configured shoot invite-only roles exist',
+            inviteOnlyRoles.every((id) => roles.data?.some((role) => role.id === id))
         )
     const unverified = !membershipEnabled
         ? null
@@ -72,7 +78,9 @@ async function checkDiscord(config, { request = fetch, log = console.log } = {})
         check(
             'Unverified is a separate role with no permissions and mentions enabled',
             Boolean(unverified) &&
-                ![guildId, memberRoleId, execRoleId, adminRoleId, ...eligibleRoles].includes(unverified.id) &&
+                ![guildId, memberRoleId, execRoleId, adminRoleId, ...eligibleRoles, ...inviteOnlyRoles].includes(
+                    unverified.id
+                ) &&
                 !unverified.managed &&
                 BigInt(unverified.permissions) === 0n &&
                 unverified.mentionable
@@ -86,9 +94,15 @@ async function checkDiscord(config, { request = fetch, log = console.log } = {})
         check(
             'Production access is a separate, manageable role with no server-wide permissions',
             Boolean(production) &&
-                ![guildId, memberRoleId, execRoleId, adminRoleId, unverified?.id, ...eligibleRoles].includes(
-                    production.id
-                ) &&
+                ![
+                    guildId,
+                    memberRoleId,
+                    execRoleId,
+                    adminRoleId,
+                    unverified?.id,
+                    ...eligibleRoles,
+                    ...inviteOnlyRoles
+                ].includes(production.id) &&
                 !production.managed &&
                 BigInt(production.permissions) === 0n &&
                 highest > production.position

@@ -141,16 +141,17 @@ class ShootService {
         }
     }
 
-    async eligible(guild, userId, members = this.membersForPass(guild)) {
+    async eligible(guild, userId, members = this.membersForPass(guild), { invited = false } = {}) {
         const member = await members(userId)
         return Boolean(
             member &&
             !member.user.bot &&
             (isBotAdmin(member, null) ||
-                (
-                    this.config.shootEligibleRoleIds ||
-                    [this.config.adminRoleId, this.config.memberRoleId, this.config.execRoleId].filter(Boolean)
-                ).some((roleId) => member.roles.cache.has(roleId)))
+                [
+                    ...(this.config.shootEligibleRoleIds ||
+                        [this.config.adminRoleId, this.config.memberRoleId, this.config.execRoleId].filter(Boolean)),
+                    ...(invited ? this.config.shootInviteOnlyRoleIds || [] : [])
+                ].some((roleId) => member.roles.cache.has(roleId)))
         )
     }
 
@@ -302,7 +303,7 @@ class ShootService {
             if (action === 'add') {
                 if (current.status !== 'open') throw new ShootInputError(uiText('shoot.addOpenOnly'))
                 const user = interaction.options.getUser('user', true)
-                if (!(await this.eligible(interaction.guild, user.id, members)))
+                if (!(await this.eligible(interaction.guild, user.id, members, { invited: true })))
                     throw new ShootInputError(uiText('shoot.ineligible', { userId: user.id }))
                 const participants = await this.participantIds(current, interaction.guild, members)
                 if (!participants.includes(user.id) && participants.length >= 98)
@@ -376,11 +377,11 @@ class ShootService {
     async submitModal(interaction) {
         await this.operation('defer_reply', () => interaction.deferReply({ flags: MessageFlags.Ephemeral }))
         const [, , action, id, revision] = interaction.customId.split(':')
-        const details = parseDetails(interaction.fields, this.config.shootTimezone)
         await this.withLock(id, async () => {
             const members = this.membersForPass(interaction.guild)
             const shoot = await this.store.getShoot(id, interaction.guildId)
             if (!shoot) throw new ShootInputError(uiText('shoot.expired'))
+            const details = parseDetails(interaction.fields, this.config.shootTimezone, shoot)
             this.failures.update({
                 shootId: id,
                 name: shoot.name,
@@ -396,7 +397,7 @@ class ShootService {
                     throw new ShootInputError(uiText('shoot.expired'))
                 }
                 for (const row of await this.store.shootParticipants(id)) {
-                    if (!(await this.eligible(interaction.guild, row.user_id, members))) {
+                    if (!(await this.eligible(interaction.guild, row.user_id, members, { invited: true }))) {
                         throw new ShootInputError(uiText('shoot.ineligible', { userId: row.user_id }))
                     }
                 }
@@ -444,7 +445,8 @@ class ShootService {
         const ids = [shoot.organizer_id]
         for (const row of await this.store.shootParticipants(shoot.id)) {
             if (row.user_id === shoot.organizer_id || (!row.invited && !row.reacted)) continue
-            if (await this.eligible(guild, row.user_id, members)) ids.push(row.user_id)
+            if (await this.eligible(guild, row.user_id, members, { invited: Boolean(row.invited) }))
+                ids.push(row.user_id)
         }
         if (ids.length > 98) throw new ShootInputError(uiText('shoot.full'), 'TVM_SHOOT_FULL')
         return ids
@@ -590,7 +592,7 @@ class ShootService {
             ) {
                 if (row?.reacted) {
                     await this.store.setShootReaction(shoot.id, userId, false, shoot.announcement_id)
-                    if (userId !== shoot.organizer_id) admitted.delete(userId)
+                    if (!row.invited && userId !== shoot.organizer_id) admitted.delete(userId)
                 }
                 // Reaction cleanup is cosmetic. A failure here must not prevent
                 // permission synchronization from revoking an ineligible member.

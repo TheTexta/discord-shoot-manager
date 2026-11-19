@@ -53,6 +53,8 @@
         "notShoot": "This channel is not a managed shoot chat.",
         "reason": "Shoot workspace",
         "permission": "A configured bot administrator or Discord administrator must perform this action.",
+        "membersOption": "Optional @mentions of members with eligible or invite-only roles to invite immediately",
+        "addUserOption": "Member with an eligible or invite-only role, or Discord administrator, to add to the shoot",
         "ineligible": "<@{userId}> must have an eligible Discord role or Discord Administrator permission, and cannot be a bot.",
         "joinDenied": "You could not join. The joining window may have expired, the shoot may be closed or full, or you may lack an eligible role. Ask a bot administrator for help."
     }

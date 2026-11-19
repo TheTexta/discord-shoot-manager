@@ -5,6 +5,7 @@
 | Profile                              | Manage bot/shoots                          | Ordinary shoot admission                                                     | View unrelated shoots | Archived posting                              |
 | ------------------------------------ | ------------------------------------------ | ---------------------------------------------------------------------------- | --------------------- | --------------------------------------------- |
 | Eligible role                        | No                                         | Yes                                                                          | No                    | Read-only when participating.                 |
+| Invite-only role                     | No                                         | Admin setup/add invitation only; not reaction joining.                       | No                    | Read-only when directly invited.              |
 | Bot-admin role                       | Yes                                        | Only if included in eligible roles; included in membership-derived defaults. | No                    | Yes when participating.                       |
 | Production-access role only          | No                                         | No                                                                           | Yes                   | Yes through role-based access.                |
 | Organiser                            | Management still requires admin authority. | Creator retains access.                                                      | No                    | Follows current admin/production permissions. |
@@ -12,6 +13,8 @@
 | Roleless/unverified outsider         | No                                         | No                                                                           | No                    | No.                                           |
 
 Email verification records are not required for shoot participation. Shoot eligibility comes from current configured Discord role IDs or Discord Administrator permission. An explicit `SHOOT_ELIGIBLE_ROLE_IDS` list replaces defaults. Production-access and administrative roles are deliberately separate. The bot never assigns/revokes production access through roster synchronization.
+
+`SHOOT_INVITE_ONLY_ROLE_IDS` adds roles for direct invitations only. Their holders require a stored direct invitation for each shoot; reaction participation alone is insufficient. Current qualifying roles are rechecked on synchronization, including archived shoots. A member who also has an ordinary eligible role or Discord Administrator permission retains that eligibility. Removing an invitation prevents invite-only reaction rejoining. No roster tier or role ownership changes are involved.
 
 Private chats use explicit overwrites, not inherited category policy. Participants, organiser, bot, production-access holders, and Discord administrators can see them. Ordinary participants cannot create threads; archives deny ordinary posting and thread sending. Participating bot administrators and production-access holders retain archive posting. A maximum of 98 currently eligible participants includes the organiser; inactive historical invitations do not consume seats.
 

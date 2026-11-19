@@ -71,17 +71,27 @@ test('deployment text overrides are partial, validated, immutable and loaded by 
     assert.throws(() => loadUiText(filename), /readable JSON/)
 })
 
-test('configured timezone parses and edits the same instant, retaining DST rejection and noon defaults', () => {
+test('timezone applies only to legacy timestamp prefilling and preserves unchanged legacy schedules', () => {
     const zone = 'Europe/London'
     const details = parseDetails(fields('London shoot', '2026-07-15 13:30'), zone)
-    assert.equal(details.call_time, DateTime.fromISO('2026-07-15T12:30:00Z').toMillis())
-    const inputs = modal({ id: 'test', revision: 0, ...details }, true, zone).toJSON().components
+    assert.equal(details.call_time, null)
+    assert.equal(details.call_time_text, '13:30')
+    const legacy = {
+        id: 'test',
+        revision: 0,
+        ...details,
+        call_date_text: null,
+        call_time_text: null,
+        call_time: DateTime.fromISO('2026-07-15T12:30:00Z').toMillis()
+    }
+    const inputs = modal(legacy, true, zone).toJSON().components
     assert.equal(inputs[1].component.value, '2026-07-15')
     assert.equal(inputs[2].component.value, '13:30')
-    assert.match(inputs[2].label, /Europe\/London/)
+    assert.match(inputs[2].label, /any text/)
+    assert.equal(parseDetails(fields('Renamed', '2026-07-15 13:30'), zone, legacy).call_time, legacy.call_time)
     for (const value of ['2026-03-29 01:30', '2026-10-25 01:30'])
-        assert.throws(() => parseDetails(fields('DST', value), zone), /Europe\/London/)
-    assert.equal(DateTime.fromMillis(parseDetails(fields('Noon', '2026-07-15 '), zone).call_time, { zone }).hour, 12)
+        assert.equal(parseDetails(fields('DST', value), zone).call_time, null)
+    assert.equal(parseDetails(fields('No time', '2026-07-15 '), zone).call_time_text, '')
     assert.equal(parseDetails(fields('Unscheduled', ''), zone).call_time, null)
 })
 
@@ -98,7 +108,9 @@ test('shoot-only lifecycle persists without membership, and explicit roles gover
     await f.service.initialize()
     const { shoot } = await f.create(fields('Reusable shoot', '2026-07-15 13:30'))
     assert.equal(shoot.status, 'open')
-    assert.equal(shoot.call_time, DateTime.fromISO('2026-07-15T12:30:00Z').toMillis())
+    assert.equal(shoot.call_time, null)
+    assert.equal(shoot.call_date_text, '2026-07-15')
+    assert.equal(shoot.call_time_text, '13:30')
     await f.react(shoot, 'joined')
     const channel = f.channels.get(shoot.channel_id)
     assert.equal(allows(channel, IDS.joined, P.ViewChannel), true)

@@ -9,6 +9,7 @@ const { joinDeadline, PERIOD_TEXT, noMentions } = require('./policy')
 function renderShoot(shoot, kind, closed, now = Date.now()) {
     const deadline = joinDeadline(shoot)
     const expired = deadline != null && now >= deadline
+    const scheduleText = [shoot.call_date_text, shoot.call_time_text].filter(Boolean).join('\n')
     const joinValue =
         shoot.announcement_deleted_at != null
             ? uiText('shoot.joinUnavailable')
@@ -24,10 +25,11 @@ function renderShoot(shoot, kind, closed, now = Date.now()) {
         .addFields(
             {
                 name: uiText('shoot.callField'),
-                value:
-                    shoot.call_time == null
-                        ? uiText('shoot.unscheduled')
-                        : `<t:${Math.floor(shoot.call_time / 1000)}:F>`
+                value: scheduleText
+                    ? escapeMarkdown(scheduleText)
+                    : shoot.call_time == null
+                      ? uiText('shoot.unscheduled')
+                      : `<t:${Math.floor(shoot.call_time / 1000)}:F>`
             },
             { name: uiText('shoot.locationField'), value: escapeMarkdown(shoot.location) },
             { name: uiText('shoot.organizerField'), value: `<@${shoot.organizer_id}>` },

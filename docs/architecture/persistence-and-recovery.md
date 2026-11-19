@@ -12,9 +12,13 @@ Membership operations share an account-by-account lock and reread current state.
 
 Drafts and participant rows persist transactionally. A shoot progresses through draft/provisioning/open/closing/closed/reopening; missing-channel state is reported instead of silently making a replacement workspace. Commands save intended state before synchronizing Discord, so a lost response is distinguishable from an unsaved action. Retries converge without duplicate channels/messages.
 
+Migration 8 adds nullable `call_date_text` and `call_time_text` without rewriting old `call_time` instants. New/changed schedules save literal text and clear `call_time`; blank text is distinct from legacy null columns. Unchanged legacy schedule fields preserve the exact original instant, including seconds/milliseconds, through edits to other details. Both messages and reopened forms use saved text. Reaction joining still uses independent numeric `join_started_at` deadlines. Back up before applying migrations; older runtimes reject a newer schema, so rollback requires the pre-upgrade database as well as the old runtime.
+
 Topics and message footers use fixed `TVM shoot …` recovery markers; interaction identifiers retain `tvm:`. They are persistence contracts, not branding. Keep them readable across upgrades. Wording overlays never alter them. Existing timestamps remain absolute instants when a deployment timezone changes.
 
 Reaction changes debounce for 250 ms with a trailing pass when dirty. Reconciliation reads fresh member roles once per shoot/pass, evicts transient failures, and never carries permission cache across passes/shoots. Current eligibility is checked for reactions, direct invitations, capacity, and synchronization. Organisers retain their documented access exception. Role/access changes and departures schedule reconciliation; the one-minute timer and reconnect catch missed events.
+
+The existing participant `invited` flag distinguishes direct admission from reactions. Invite-only roles qualify only with that flag; rejection/cleanup of their reactions must not discard an occupied invitation seat. No new participant table or roster tier is needed.
 
 Missing pinned briefs are recreated. Routine sync does not recreate deleted invitations; edit/reopen/startup may republish without pinging or resetting the original join deadline. Closed invitations are deleted 24 hours after close and stay deleted through edits/startup until reopening. Interrupted deletion/publication intent persists. Deleted shoot channels are marked missing and alerted, never automatically recreated.
 

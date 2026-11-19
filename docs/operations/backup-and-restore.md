@@ -15,4 +15,4 @@ Restore first into an isolated temporary database. Check integrity, numbered mig
 
 For production restore: stop the bot, preserve the current database for investigation, replace it with the validated snapshot, remove obsolete WAL/SHM sidecars only while no process has the database open, restore UID/GID 1000 and mode `0600`, then start one replica and reconcile. Match runtime to schema: a database newer than the runtime is rejected. Rehearse recovery periodically.
 
-For rollback, stop the new process before deploying a known-good compatible commit. If a migration is incompatible, restore its matching pre-upgrade snapshot instead of downgrading schema in place. The generalisation changes add no new migration; existing database and volume names remain valid. See [deployment](deployment.md).
+For rollback, stop the new process before deploying a known-good compatible commit. Pre-version-8 runtimes require the pre-upgrade snapshot after migration 8 adds free-text schedule columns; do not downgrade schema in place. Preserve post-upgrade data for recovery before restoring. Existing database and volume names remain valid. See [deployment](deployment.md).
