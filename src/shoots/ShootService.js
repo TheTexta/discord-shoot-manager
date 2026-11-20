@@ -37,11 +37,19 @@ class ShootService {
         this.config = config
         this.settings = config.shoots
         this.alertAdmins = alertAdmins
+        this.now = now
         this.failures = new ShootFailureReporter({ alertAdmins, logger, now })
         this.locks = new Map()
         this.running = false
         this.stopped = false
-        this.resources = new ShootResources(this)
+        this.resources = new ShootResources({
+            client,
+            store,
+            settings: this.settings,
+            operation: (name, work) => this.operation(name, work),
+            updateContext: (context) => this.failures.update(context),
+            now
+        })
         this.forms = new Map()
         this.reactionJobs = new Map()
         this.lastSuccessAt = null
@@ -220,7 +228,7 @@ class ShootService {
     }
 
     async prepareForm(interaction, shoot, edit = false) {
-        const now = Date.now()
+        const now = this.now()
         for (const [token, value] of this.forms) if (value.expiresAt <= now) this.forms.delete(token)
         const token = crypto.randomUUID()
         this.forms.set(token, {
@@ -249,7 +257,7 @@ class ShootService {
         const value = this.forms.get(token)
         if (
             !value ||
-            value.expiresAt <= Date.now() ||
+            value.expiresAt <= this.now() ||
             value.userId !== interaction.user.id ||
             value.channelId !== interaction.channelId
         )
@@ -357,7 +365,7 @@ class ShootService {
                 await this.operation('save_shoot_status', () =>
                     this.store.updateShoot(shoot.id, {
                         status: action === 'close' ? 'closing' : 'reopening',
-                        closed_at: action === 'close' ? (current.closed_at ?? Date.now()) : null
+                        closed_at: action === 'close' ? (current.closed_at ?? this.now()) : null
                     })
                 )
                 this.failures.update({ persisted: true })
@@ -392,7 +400,7 @@ class ShootService {
                 if (
                     shoot.status !== 'draft' ||
                     shoot.organizer_id !== interaction.user.id ||
-                    Date.now() - shoot.created_at >= 30 * 60000
+                    this.now() - shoot.created_at >= 30 * 60000
                 ) {
                     throw new ShootInputError(uiText('shoot.expired'))
                 }
@@ -435,10 +443,6 @@ class ShootService {
     // Scan all pages; Discord's enforceNonce alone only deduplicates recent sends.
     recoverMessage(...args) {
         return this.resources.recoverMessage(...args)
-    }
-
-    ensureMessage(...args) {
-        return this.resources.ensureMessage(...args)
     }
 
     async participantIds(shoot, guild, members = this.membersForPass(guild)) {
@@ -500,29 +504,25 @@ class ShootService {
                 })
             )
         }
-        await this.ensureMessage(channel, shoot, 'brief', 'brief_id', closed, false, members)
+        await this.resources.ensureBrief(channel, shoot, { closed, members })
         const announcementChannel = await this.operation('fetch_announcement_channel', () =>
             guild.channels.fetch(this.settings.announcementChannelId)
         )
-        const announcement = await this.ensureMessage(
-            announcementChannel,
-            shoot,
-            'invitation',
-            'announcement_id',
+        const announcement = await this.resources.ensureInvitation(announcementChannel, shoot, {
             closed,
-            republishAnnouncement
-        )
+            republish: republishAnnouncement
+        })
         const beforeAnnouncement = shoot
         shoot = await this.store.getShoot(id, guild.id)
         if (beforeAnnouncement.announcement_deleted_at !== shoot.announcement_deleted_at) {
-            await this.ensureMessage(channel, shoot, 'brief', 'brief_id', closed, false, members)
+            await this.resources.ensureBrief(channel, shoot, { closed, members })
         }
         if (announcement && shoot.join_started_at == null) {
             // Use the actual publication time even when recovering a lost send response.
             await this.store.updateShoot(id, { join_started_at: announcement.createdTimestamp ?? shoot.created_at })
             shoot = await this.store.getShoot(id, guild.id)
-            await this.ensureMessage(channel, shoot, 'brief', 'brief_id', closed, false, members)
-            await this.ensureMessage(announcementChannel, shoot, 'invitation', 'announcement_id', closed)
+            await this.resources.ensureBrief(channel, shoot, { closed, members })
+            await this.resources.ensureInvitation(announcementChannel, shoot, { closed })
         }
         if (announcement && !closed && !announcement.reactions.cache.get(EMOJI)?.me)
             await this.operation('add_join_reaction', () => announcement.react(EMOJI))
@@ -567,7 +567,7 @@ class ShootService {
         const message = await this.fetchMessage(channel, shoot.announcement_id, 'fetch_invitation')
         // Deleting an invitation preserves membership. Routine sync does not republish it.
         if (!message) {
-            await this.store.updateShoot(shoot.id, { announcement_deleted_at: Date.now() })
+            await this.store.updateShoot(shoot.id, { announcement_deleted_at: this.now() })
             return
         }
         const users = await this.reactionUsers(message)
@@ -580,7 +580,7 @@ class ShootService {
                 if (!row.invited && row.user_id !== shoot.organizer_id) admitted.delete(row.user_id)
             }
         }
-        const accepts = joiningAllowed(shoot)
+        const accepts = joiningAllowed(shoot, this.now())
         let cleanupFailed = false
         for (const [userId, user] of users) {
             const row = rowsById.get(userId)
@@ -754,7 +754,7 @@ class ShootService {
                         await this.report(shoot.id, error)
                     }
                 }
-                if (!this.stopped && !failed) this.lastSuccessAt = Date.now()
+                if (!this.stopped && !failed) this.lastSuccessAt = this.now()
                 await this.failures.recovered({ shootId: 'reconcile', workflow: 'reconcile' })
             } while (this.reconcileRequested && !this.stopped)
         } finally {

@@ -8,20 +8,13 @@ const { embedKey } = require('./policy')
 const { renderShoot, memberFields } = require('./render')
 
 class ShootResources {
-    constructor(service) {
-        this.service = service
-    }
-    get client() {
-        return this.service.client
-    }
-    get store() {
-        return this.service.store
-    }
-    get settings() {
-        return this.service.settings
-    }
-    operation(name, work) {
-        return this.service.operation(name, work)
+    constructor({ client, store, settings, operation, updateContext, now = Date.now }) {
+        this.client = client
+        this.store = store
+        this.settings = settings
+        this.operation = operation
+        this.updateContext = updateContext
+        this.now = now
     }
     async ensureChannel(shoot, guild, permissions) {
         let channel
@@ -64,7 +57,7 @@ class ShootResources {
             await this.store.updateShoot(shoot.id, { channel_id: channel.id })
             shoot = await this.store.getShoot(shoot.id, guild.id)
         }
-        this.service.failures.update({ channelId: channel.id })
+        this.updateContext({ channelId: channel.id })
         return { channel, shoot }
     }
 
@@ -92,18 +85,27 @@ class ShootResources {
         }
     }
 
-    async ensureMessage(channel, shoot, kind, column, closed, republishAnnouncement = false, members) {
+    ensureBrief(channel, shoot, { closed, members }) {
+        return this._ensureMessage(channel, shoot, 'brief', { closed, members })
+    }
+
+    ensureInvitation(channel, shoot, { closed, republish = false }) {
+        return this._ensureMessage(channel, shoot, 'invitation', { closed, republish })
+    }
+
+    async _ensureMessage(channel, shoot, kind, { closed, republish: republishAnnouncement = false, members }) {
         const invitation = kind === 'invitation'
+        const column = invitation ? 'announcement_id' : 'brief_id'
         const republish = republishAnnouncement || Boolean(shoot.announcement_republish_pending)
         // Cleanup remains final while a shoot is closed. Reopening may republish.
-        if (invitation && closed && shoot.closed_at != null && Date.now() >= shoot.closed_at + 86400000) return null
+        if (invitation && closed && shoot.closed_at != null && this.now() >= shoot.closed_at + 86400000) return null
         if (invitation && shoot.announcement_deleted_at != null && !republish) return null
         let message = await this.fetchMessage(channel, shoot[column], `fetch_${kind}`)
         if (invitation && !message && (shoot[column] || closed) && !republish) {
             // Routine synchronization honors deletion. Important events may publish
             // again; persist that intent before sending so ambiguous failures retry.
             if (shoot.announcement_deleted_at == null) {
-                await this.store.updateShoot(shoot.id, { announcement_deleted_at: Date.now() })
+                await this.store.updateShoot(shoot.id, { announcement_deleted_at: this.now() })
             }
             return null
         }
@@ -111,11 +113,14 @@ class ShootResources {
             await this.store.updateShoot(shoot.id, { announcement_republish_pending: 1 })
         }
         if (!message) message = await this.recoverMessage(channel, shoot, kind)
-        const payload = renderShoot(invitation ? { ...shoot, announcement_deleted_at: null } : shoot, kind, closed)
+        const payload = renderShoot(
+            invitation ? { ...shoot, announcement_deleted_at: null } : shoot,
+            kind,
+            closed,
+            this.now()
+        )
         if (kind === 'brief') {
             const names = []
-            const guild = await this.operation('fetch_guild', () => this.client.guilds.fetch(shoot.guild_id))
-            members ||= this.service.membersForPass(guild)
             for (const row of await this.store.shootParticipants(shoot.id)) {
                 if (!row.invited || row.user_id === shoot.organizer_id) continue
                 const member = await members(row.user_id)
@@ -172,11 +177,11 @@ class ShootResources {
             // gives the best available date; persist it once so retries cannot reset it.
             const message = await this.fetchMessage(channel, shoot.announcement_id, 'fetch_invitation')
             await this.store.updateShoot(shoot.id, {
-                closed_at: message?.editedTimestamp ?? message?.createdTimestamp ?? Date.now()
+                closed_at: message?.editedTimestamp ?? message?.createdTimestamp ?? this.now()
             })
             shoot = await this.store.getShoot(shoot.id, shoot.guild_id)
         }
-        if (Date.now() < shoot.closed_at + 86400000) return shoot
+        if (this.now() < shoot.closed_at + 86400000) return shoot
         const messageIds = new Set(shoot.announcement_id ? [shoot.announcement_id] : [])
         if (shoot.announcement_republish_pending) {
             const recovered = await this.recoverMessage(channel, shoot, 'invitation')
@@ -188,7 +193,7 @@ class ShootResources {
             })
         }
         await this.store.updateShoot(shoot.id, {
-            announcement_deleted_at: Date.now(),
+            announcement_deleted_at: this.now(),
             announcement_republish_pending: 0
         })
         return this.store.getShoot(shoot.id, shoot.guild_id)

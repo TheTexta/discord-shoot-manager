@@ -406,6 +406,7 @@ async function fixture(t, { reporting = false, now, membershipEnabled = true } =
             store = openStore()
             await store.ready
             service.store = store
+            service.resources.store = store
         }
     }
 }

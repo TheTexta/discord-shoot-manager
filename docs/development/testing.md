@@ -13,6 +13,8 @@ Tests use temporary SQLite databases and Discord/mail adapters, not live credent
 
 Shoot fixtures live under `test/helpers`. Lifecycle, forms, reactions, recovery, reliability, reporting, and permissions are separate suites. Synthetic diagnostic tests inject a request adapter that rejects non-GET methods. Live `discord:check` is read-only but needs credentials and is not a normal unit-test step. Starting the actual bot registers commands and may mutate Discord; do not use production tokens for automated smoke tests.
 
+`shoot-clock.test.js` checks service-level form/draft expiry, admission, close, and success timestamps with an injected clock. `shoot-resources.test.js` exercises the explicit resource interface without a parent service, including exact cleanup/render deadlines and ambiguous republish recovery. `membership-interactions.test.js` directly checks handled/disabled routing, authorization, verification delegation, and accepted administrative outcomes when confirmation fails. Existing runtime tests still verify generic acknowledgement ordering and bounded accepted-delivery shutdown.
+
 ## Container checks
 
 ```sh
