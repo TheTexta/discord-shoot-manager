@@ -1,16 +1,26 @@
 # Discord Shoot Manager
 
-A self-hosted, single-guild Discord shoot manager with optional roster-based membership verification. It manages private shoot workspaces, crew participation, scheduling, access, and archives. With membership enabled, each roster email links to one Discord account and grants configured membership roles.
+A self-hosted Discord bot for coordinating private shoot workspaces, with optional roster-based membership verification. Each organisation runs its own bot, configuration, and SQLite database for one Discord server.
 
-Each organisation runs its own bot/application, configuration, and database, with configurable roles, wording, and timezone, including **shoot-only mode without email verification**. TVM's installation remains **TVM Bot**, backed by this project; the GitHub rename does not change its Discord identity or existing workspaces. Start with the [documentation index](docs/README.md), [setup guide](docs/guides/setup.md), and [TVM deployment profile](docs/deployments/tvm.md).
+## Implemented functionality
 
-## Quick start
+- Create/edit shoots with free-text schedules, reaction joining, direct crew invitations, private chats, and close/reopen archives.
+- Optionally verify one roster email per Discord account, synchronize membership roles, and preview/confirm complete CSV roster replacements.
+- Run shoot-only without email verification; configure eligible/invite-only roles, wording, and timezone.
+- Validate Discord setup, report private operator alerts, and recover persisted shoot resources after restarts.
 
-Requires Node.js 22.13+ and a Discord bot. Membership is enabled by default and additionally requires a Resend key with a verified sending domain.
+## Local setup
 
-1. Copy `.env.example` to `.env.local` and fill in the values. Generate a random `VERIFICATION_CODE_SECRET` of at least 32 characters.
-2. Enable **Server Members Intent** in the Discord Developer Portal. Install the bot with `bot` and `applications.commands` scopes.
-3. Grant Manage Roles, View Channels, and Send Messages. Put the bot role above all membership roles and `Unverified`; configure a private administrator alert channel.
+Requires **Node.js 22.13+**, npm, and a dedicated Discord bot/application with a test server. Never use a production token or database for local testing.
+
+1. For shoot-only mode, copy [`examples/shoot-only.env.example`](examples/shoot-only.env.example) to `.env.local` in a new checkout. Keep `MEMBERSHIP_ENABLED=false`; no roster, SMTP, or verification secret is needed.
+2. Fill the bot/application/guild IDs, explicit eligible-role IDs, bot-admin and production-access roles, private alert channel, invitation channel, and distinct active/archive categories.
+3. Enable **Server Members Intent** in the Developer Portal; install with `bot` and `applications.commands` scopes. No Message Content Intent is needed.
+4. Grant the [required bot/channel permissions](docs/reference/permissions.md#bot-permissions), not Administrator. The production-access role must have no server-wide permissions and sit below the bot.
+
+For membership instead, copy [`.env.example`](.env.example): membership defaults to enabled and additionally needs membership roles, a complete roster, Resend SMTP credentials with a verified sending domain, and a random `VERIFICATION_CODE_SECRET` of at least 32 characters. Put the bot above all roles it manages. Follow the [setup guide](docs/guides/setup.md) and [configuration reference](docs/reference/configuration.md) for either mode. Never commit secrets or real rosters.
+
+From the repository root, after filling `.env.local`:
 
 ```sh
 npm ci
@@ -19,63 +29,26 @@ npm run discord:check
 npm start
 ```
 
-`npm start` loads `.env.local` when present; exported environment variables take precedence. The local database defaults to `./config/tvm.db`. Containers persist `/usr/app/config/tvm.db`. Run one replica.
+`discord:check` makes authenticated GET-only Discord requests; it does not prove every human's effective access. **Starting the bot registers commands and can create/synchronize Discord resources.** Use representative test accounts to check private-chat and archive access.
 
-Startup validates configuration, editable messages, roles, channel permissions, and administrator alert-channel privacy. Commands become available after initialization; `/source` remains available while starting.
+`npm start` loads `.env.local` when present; exported variables take precedence. The local database defaults to `./config/tvm.db`. Run **one process/replica per database and token**.
 
-For a shoot-only deployment, use [`examples/shoot-only.env.example`](examples/shoot-only.env.example) instead: explicitly set `MEMBERSHIP_ENABLED=false`, eligible role IDs, and all shoot resources. No roster, membership roles, SMTP, or verification secret is needed. Neutral settings accept legacy `TVM_*` aliases and reject conflicting values. See [configuration](docs/reference/configuration.md) for the complete contract and wording overrides.
+## Architecture and design
 
-## Membership
+The CommonJS Node.js runtime uses discord.js, SQLite persistence/migrations, and optional Resend SMTP. `src/app` wires the runtime; `src/shoots` and `src/membership` own independent capabilities; `src/infrastructure` owns storage, mail, and health reporting; `src/shared` holds authorization, validation, and wording contracts. This is not a hosted multi-guild service.
 
-The following role names describe the default TVM profile; other deployments configure their own corresponding role IDs and wording.
+Management authority is separate from production visibility and ordinary shoot eligibility. UI text supports validated partial JSON overrides without a source fork. Legacy `TVM_*` configuration aliases remain supported; conflicting aliases are rejected.
 
-Members receive `General Member`. Editors/producers also receive `Executives (Producers & Editors)`; admins also receive `Admin Team`. Codes expire after 15 minutes and allow five attempts. Requests and sends are rate limited.
+TVM's installation remains **TVM Bot**; the project rename does not change its Discord identity or workspaces. See the [TVM deployment profile](docs/deployments/tvm.md).
 
-Upload a CSV with `Email,Role` headers. Accepted roles are `GM`, `Exec - Editor`, `Exec - Producer`, and `Admin`. Other columns are ignored. Limits: 2 MiB, 10,000 rows, and no duplicate emails.
+## Documentation
 
-```sh
-npm run roster:check -- /path/to/eligible-members.csv
-```
+- [Documentation index](docs/README.md): operator guides, references, decisions, and clearly marked proposals/history.
+- [Shoot workflows](docs/guides/shoots.md) and [membership/roster operations](docs/guides/membership.md).
+- [Commands](docs/reference/commands.md), [permissions](docs/reference/permissions.md), and [wording overrides](docs/reference/configuration.md#wording-overrides).
+- [Deployment and secret rotation](docs/operations/deployment.md), [backup/restore](docs/operations/backup-and-restore.md), and [troubleshooting](docs/operations/troubleshooting.md).
+- [Architecture](docs/architecture/overview.md), [development checks](docs/development/testing.md), [contributing](CONTRIBUTING.md), and [security reporting](SECURITY.md).
 
-`/upload` first shows a private preview of additions, omissions, tier changes, and demotions. Nothing changes until the same authorized admin clicks **Replace entire roster** in the same channel. The preview expires after 10 minutes, a restart, another preview by that admin, or an intervening roster replacement. Cancel discards it. Review omissions carefully: this is not a merge.
-
-Each confirmed replacement replaces the complete active roster. Omitted emails lose roster eligibility; changed tiers remove obsolete bot-owned roles. Roles assigned before bot management remain protected independently for GM, Exec, and Admin. Inactive account links are retained, so a returning email automatically regains its current tier without another verification challenge. The retired `TVM_AUTO_ROLE_REVOCATION` setting is ignored. `Unverified` is assigned only to humans with no other roles.
-
-Existing databases start in transition mode: their merged roster and existing roles are preserved until the first confirmed complete CSV replacement. `/roster status` shows whether snapshot control is active. Back up before upgrading, then upload and confirm the complete current roster. The confirmation reply reports database acceptance; Discord synchronization runs in the background and reports progress, protected roles, and failures through `/roster status`. Invalid, cancelled, expired, or stale previews leave the active snapshot unchanged. A failed confirmation delivery does not undo an accepted action; do not repeat saved releases or transfers merely to get a reply.
-
-Verification replies are generic and sent before eligibility lookup or email delivery. An SMTP failure never changes that reply; operators receive a private alert. The reply does not guarantee inbox delivery.
-
-## Common commands
-
-Membership commands appear only with membership enabled; `/shoot` appears only with shoots configured. Stale membership buttons/modals/commands receive a private disabled response in shoot-only mode.
-
-Management commands require the configured Admin Team role or Discord Administrator permission. The manually assigned `all production access` role controls visibility and participation across all shoots, Broadcast, and Post Credits; Admin Team alone does not grant that visibility. Admins retain access to shoots they organize or join.
-
-Optional `SHOOT_INVITE_ONLY_ROLE_IDS` adds roles admins may invite without permitting reaction self-joining (TVM's Service Request policy). Shoot creation/editing accepts literal date/time text such as `next Friday` and `around 6 pm`; old timestamp schedules remain unchanged until their schedule is edited. See [shoot workflows](docs/guides/shoots.md).
-
-| Command                                                                                                      | Purpose                                            |
-| ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------- |
-| `/verify`                                                                                                    | Request a code for your roster email.              |
-| `/source`                                                                                                    | Open this bot’s source repository.                 |
-| `/upload`                                                                                                    | Preview and confirm a complete roster replacement. |
-| `/postverify`                                                                                                | Publish the verification button.                   |
-| `/testmail`                                                                                                  | Send a delivery test to a controlled inbox.        |
-| `/roster status`, `/roster audit`                                                                            | Inspect roster status and changes.                 |
-| `/roster reconcile`, `/roster repair`                                                                        | Retry membership role synchronization.             |
-| `/roster transfer`, `/roster release`                                                                        | Move or release a verified account claim.          |
-| `/shoot setup`, `/shoot edit`, `/shoot crew`, `/shoot add`, `/shoot remove`, `/shoot close`, `/shoot reopen` | Manage private shoot chats when configured.        |
-
-## Operator and contributor guides
-
-- [All documentation](docs/README.md)
-- [Shoot setup, joining, and archival](docs/guides/shoots.md)
-- [Membership and roster operations](docs/guides/membership.md)
-- [Configuration](docs/reference/configuration.md), [commands](docs/reference/commands.md), and [permissions](docs/reference/permissions.md)
-- [Deployment and secret rotation](docs/operations/deployment.md), [backup/restore](docs/operations/backup-and-restore.md), and [troubleshooting](docs/operations/troubleshooting.md)
-- [Development checks](docs/development/testing.md) and [architecture](docs/architecture/overview.md)
-- [Expanded permission diagnostics investigation — proposed](docs/plans/permission-diagnostics.md)
-- [Contributing](CONTRIBUTING.md) and [security reporting](SECURITY.md)
-
-Set `UI_TEXT_PATH` to a partial JSON overlay for deployment-specific wording, keeping keys/placeholders intact; [generic example](examples/generic-ui-text.json). Root `ui-text.json` remains TVM's default. Restart/redeploy after editing; use `/postverify` when enabled to publish updated verification copy. Recovery identifiers are fixed in code. Startup rejects invalid override keys, placeholders, and component lengths.
+## License and attribution
 
 Based on [EmailVerify](https://github.com/lkaesberg/EmailVerify). Licensed under [AGPL-3.0-or-later](LICENSE); retain the license and upstream attribution. Historical upstream documentation is [archived](docs/upstream/README.md). Keep deployed source public; `/source` links to it.

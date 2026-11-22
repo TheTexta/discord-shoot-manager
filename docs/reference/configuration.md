@@ -53,6 +53,8 @@ Disabling membership does not delete stored rosters/claims, remove already assig
 
 `UI_TEXT_PATH` overlays nested sections/keys from [`ui-text.json`](../../ui-text.json). Omitted values inherit defaults. The file is loaded once per process before Discord login; restart/redeploy after changes. Unknown keys/sections, non-string values, missing/extra placeholders, and Discord component-length violations are rejected. Named placeholders must match [`uiTextSchema.json`](../../src/shared/uiTextSchema.json).
 
+Use the [generic wording example](../../examples/generic-ui-text.json) as a starting overlay; the root file remains TVM's default copy. Edit values without changing the key/placeholder contract.
+
 Overriding `roles.unverified` changes presentation, not managed-role discovery. Without `UNVERIFIED_ROLE_ID`, discovery/creation uses the base file's Unverified name so a branding overlay cannot silently create a replacement role. Configure the explicit role ID when using a renamed existing role.
 
 ```json

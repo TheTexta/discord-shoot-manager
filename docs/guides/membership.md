@@ -10,6 +10,8 @@ Input validation and rate/availability checks precede a generic reply; eligibili
 
 TVM's tiers grant General Member, optionally Executives (Producers & Editors), and optionally Admin Team. Other deployments configure the corresponding role IDs and wording, but the roster tier model remains fixed. Roles that existed before bot management are protected independently for each tier. An inactive link is retained so a returning email regains its current tier without another challenge.
 
+`Unverified` is assigned only to humans with no roles other than `@everyone`; it is removed when another role is present. Bots are excluded.
+
 ## Replace the complete roster
 
 1. Prepare a CSV with `Email,Role` headers. Accepted roles: `GM`, `Exec - Editor`, `Exec - Producer`, `Admin`. Other columns are ignored. Limit: 2 MiB, 10,000 rows, no duplicate emails.
