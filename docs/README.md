@@ -19,6 +19,7 @@
 - [Accepted platform scope](decisions/0001-platform-scope.md).
 - [Generalisation implementation status](plans/generalisation.md).
 - [GitHub/project rename record](plans/project-rename.md) and [accepted identity decision](decisions/0002-project-identity.md): GitHub identity is independent of TVM Bot.
+- [Verified TVM missing-invitation rollout](deployments/tvm-missing-invitations-20261124.md).
 - [Expanded human-permission diagnostics](plans/permission-diagnostics.md): proposed, not implemented.
 - [Initial rollout history](archive/initial-rollout.md) and [upstream archive](upstream/README.md): historical, not operating instructions.
 
