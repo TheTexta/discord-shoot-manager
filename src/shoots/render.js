@@ -7,21 +7,25 @@ const { shootMarker } = require('./identifiers')
 const { joinDeadline, PERIOD_TEXT, noMentions } = require('./policy')
 
 function renderShoot(shoot, kind, closed, now = Date.now()) {
+    const missing = shoot.status === 'missing'
     const deadline = joinDeadline(shoot)
     const expired = deadline != null && now >= deadline
     const scheduleText = [shoot.call_date_text, shoot.call_time_text].filter(Boolean).join('\n')
-    const joinValue =
-        shoot.announcement_deleted_at != null
-            ? uiText('shoot.joinUnavailable')
-            : deadline != null
-              ? `<t:${Math.floor(deadline / 1000)}:F>`
-              : shoot.join_period === 'never'
-                ? uiText('shoot.joinNever')
-                : uiText('shoot.joinPending', { period: uiText(PERIOD_TEXT[shoot.join_period]) })
+    const joinValue = missing
+        ? uiText('shoot.joinDisabled')
+        : shoot.announcement_deleted_at != null
+          ? uiText('shoot.joinUnavailable')
+          : deadline != null
+            ? `<t:${Math.floor(deadline / 1000)}:F>`
+            : shoot.join_period === 'never'
+              ? uiText('shoot.joinNever')
+              : uiText('shoot.joinPending', { period: uiText(PERIOD_TEXT[shoot.join_period]) })
     const embed = new EmbedBuilder()
         .setTitle(escapeMarkdown(shoot.name))
-        .setColor(closed ? 0x747f8d : 0x9b59b6)
-        .setDescription(closed ? uiText('shoot.statusClosed') : uiText('shoot.statusOpen'))
+        .setColor(missing || closed ? 0x747f8d : 0x9b59b6)
+        .setDescription(
+            missing ? uiText('shoot.statusMissing') : closed ? uiText('shoot.statusClosed') : uiText('shoot.statusOpen')
+        )
         .addFields(
             {
                 name: uiText('shoot.callField'),
@@ -33,7 +37,10 @@ function renderShoot(shoot, kind, closed, now = Date.now()) {
             },
             { name: uiText('shoot.locationField'), value: escapeMarkdown(shoot.location) },
             { name: uiText('shoot.organizerField'), value: `<@${shoot.organizer_id}>` },
-            { name: uiText('shoot.chatField'), value: `<#${shoot.channel_id}>` },
+            {
+                name: uiText('shoot.chatField'),
+                value: missing ? uiText('shoot.chatUnavailable') : `<#${shoot.channel_id}>`
+            },
             { name: uiText('shoot.joinField'), value: joinValue }
         )
         .setFooter({ text: shootMarker(shoot.id, kind) })
@@ -41,11 +48,13 @@ function renderShoot(shoot, kind, closed, now = Date.now()) {
         embeds: [embed],
         content:
             kind === 'invitation'
-                ? closed
-                    ? uiText('shoot.closedInvitation')
-                    : expired
-                      ? uiText('shoot.expiredInvitation')
-                      : uiText('shoot.invitation')
+                ? missing
+                    ? uiText('shoot.missingInvitation')
+                    : closed
+                      ? uiText('shoot.closedInvitation')
+                      : expired
+                        ? uiText('shoot.expiredInvitation')
+                        : uiText('shoot.invitation')
                 : '',
         allowedMentions: noMentions
     }

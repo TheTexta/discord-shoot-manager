@@ -741,7 +741,12 @@ class ShootService {
                     this.store.allShoots(this.config.guildId)
                 )) {
                     if (this.stopped) break
-                    if (!ACTIVE_STATUSES.includes(shoot.status) && shoot.closed_at == null) continue
+                    if (
+                        !ACTIVE_STATUSES.includes(shoot.status) &&
+                        shoot.status !== 'missing' &&
+                        shoot.closed_at == null
+                    )
+                        continue
                     try {
                         await this.withLock(shoot.id, () =>
                             this.reconcileShoot(shoot, {

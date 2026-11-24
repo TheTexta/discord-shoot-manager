@@ -20,7 +20,7 @@ Reaction changes debounce for 250 ms with a trailing pass when dirty. Reconcilia
 
 The existing participant `invited` flag distinguishes direct admission from reactions. Invite-only roles qualify only with that flag; rejection/cleanup of their reactions must not discard an occupied invitation seat. No new participant table or roster tier is needed.
 
-Missing pinned briefs are recreated. Routine sync does not recreate deleted invitations; edit/reopen/startup may republish without pinging or resetting the original join deadline. Closed invitations are deleted 24 hours after close and stay deleted through edits/startup until reopening. Interrupted deletion/publication intent persists. Deleted shoot channels are marked missing and alerted, never automatically recreated.
+Missing pinned briefs are recreated. Routine sync does not recreate deleted invitations; edit/reopen/startup may republish without pinging or resetting the original join deadline. Closed invitations are deleted 24 hours after close and stay deleted through edits/startup until reopening. Interrupted deletion/publication intent persists. Deleted shoot channels are marked missing and alerted, never automatically recreated. Missing records continue invitation reconciliation: surviving posts become unavailable with joining disabled, including existing missing records on startup. An ambiguously published invitation can be recovered and updated, but no invitation is sent for a missing workspace. Failed edits retry; existing close deadlines, crew, and shoot details remain intact. Updating the post does not imply channel recovery.
 
 ## Operational state
 

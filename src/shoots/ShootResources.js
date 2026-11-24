@@ -113,6 +113,14 @@ class ShootResources {
             await this.store.updateShoot(shoot.id, { announcement_republish_pending: 1 })
         }
         if (!message) message = await this.recoverMessage(channel, shoot, kind)
+        // Missing workspaces may only update/recover an existing invitation, never publish another.
+        if (invitation && shoot.status === 'missing' && !message) {
+            await this.store.updateShoot(shoot.id, {
+                announcement_deleted_at: shoot.announcement_deleted_at ?? this.now(),
+                announcement_republish_pending: 0
+            })
+            return null
+        }
         const payload = renderShoot(
             invitation ? { ...shoot, announcement_deleted_at: null } : shoot,
             kind,
@@ -171,8 +179,7 @@ class ShootResources {
         const channel = await this.operation('fetch_announcement_channel', () =>
             guild.channels.fetch(this.settings.announcementChannelId)
         )
-        if (shoot.closed_at == null) {
-            if (shoot.status === 'missing') return shoot
+        if (shoot.closed_at == null && shoot.status !== 'missing') {
             // Older releases did not store close times. The existing closed message
             // gives the best available date; persist it once so retries cannot reset it.
             const message = await this.fetchMessage(channel, shoot.announcement_id, 'fetch_invitation')
@@ -181,7 +188,13 @@ class ShootResources {
             })
             shoot = await this.store.getShoot(shoot.id, shoot.guild_id)
         }
-        if (this.now() < shoot.closed_at + 86400000) return shoot
+        if (shoot.closed_at == null || this.now() < shoot.closed_at + 86400000) {
+            if (shoot.status === 'missing') {
+                await this.ensureInvitation(channel, shoot, { closed: false })
+                return this.store.getShoot(shoot.id, shoot.guild_id)
+            }
+            return shoot
+        }
         const messageIds = new Set(shoot.announcement_id ? [shoot.announcement_id] : [])
         if (shoot.announcement_republish_pending) {
             const recovered = await this.recoverMessage(channel, shoot, 'invitation')
