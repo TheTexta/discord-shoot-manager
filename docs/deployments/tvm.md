@@ -12,6 +12,10 @@ Status: runtime release `e06dbf3` deployed and bot-setup verified on 2026-11-02;
 
 Discord application name, bot username, and server nickname are separate settings. A server nickname can override the username. Earlier operations documentation recorded no TVM nickname; verify live settings before any future change. An account rename can use Discord's [modify-current-user interface](https://docs.discord.com/developers/resources/user#modify-current-user), but no such request is necessary or performed by generalisation. Keep the token private.
 
+## Shared email credential
+
+On 2026-11-19 UTC, the owner approved coordinated Resend credential replacement for this bot and the new TVM Shelf deployment. The bot was restarted and its healthy running environment privately checked against the replacement; the owner confirmed receiving both sender test messages. Bot identity, sender, SQLite data, roster and Discord permissions were unchanged. This rollout did not revoke or verify revocation of the old provider key; confirm revocation or revoke it if still present. Future rotation must update and test the bot and Shelf before revoking their shared credential; sharing the email provider does not grant Shelf or bot users administrative access to the other application. Keep credential values out of documentation and tool output.
+
 ## Membership and human visibility
 
 General Member is the base tier. Editors/producers also receive Executives (Producers & Editors); roster admins also receive Admin Team. Admin Team grants bot-management authority by configured ID, not Discord Administrator permission.
