@@ -5,7 +5,7 @@ const { escapeMarkdown, ChannelType } = require('discord.js')
 const { uiText } = require('../shared/uiText')
 const { shootMarker, shootTopic } = require('./identifiers')
 const { embedKey } = require('./policy')
-const { renderShoot, memberFields } = require('./render')
+const { renderShoot, crewFields } = require('./render')
 
 class ShootResources {
     constructor({ client, store, settings, operation, updateContext, now = Date.now }) {
@@ -128,20 +128,20 @@ class ShootResources {
             this.now()
         )
         if (kind === 'brief') {
-            const names = []
+            const invited = []
+            const reacted = []
             for (const row of await this.store.shootParticipants(shoot.id)) {
-                if (!row.invited || row.user_id === shoot.organizer_id) continue
+                if ((!row.invited && !row.reacted) || row.user_id === shoot.organizer_id) continue
                 const member = await members(row.user_id)
                 const name =
                     member?.displayName ||
                     member?.user.globalName ||
                     member?.user.username ||
                     uiText('shoot.formerMember', { userId: row.user_id })
-                names.push(escapeMarkdown(name.replace(/<@/g, '＜@')).slice(0, 48))
+                const names = row.invited ? invited : reacted
+                names.push(escapeMarkdown(name.replace(/<@/g, '＜@')))
             }
-            payload.embeds[0].addFields(
-                ...memberFields(uiText('shoot.crewInvited'), names.join(', ') || uiText('shoot.crewEmpty'))
-            )
+            payload.embeds[0].addFields(...crewFields(invited, reacted, 6000 - payload.embeds[0].length))
         }
         if (!message) {
             const nonce = crypto

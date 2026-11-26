@@ -3,11 +3,11 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { Collection, Embed } = require('discord.js')
+const { Collection, Embed, escapeMarkdown } = require('discord.js')
 const ShootResources = require('../src/shoots/ShootResources')
 const { uiText } = require('../src/shared/uiText')
 
-function fixture() {
+function fixture(participants = [{ user_id: 'crew', invited: 1 }]) {
     let now = 1000000
     const shoot = {
         id: 'shoot',
@@ -63,7 +63,7 @@ function fixture() {
         store: {
             updateShoot: async (_id, values) => Object.assign(shoot, values),
             getShoot: async () => ({ ...shoot }),
-            shootParticipants: async () => [{ user_id: 'crew', invited: 1 }]
+            shootParticipants: async () => participants
         },
         settings: { announcementChannelId: 'announcement' },
         operation: (_name, work) => work(),
@@ -105,6 +105,100 @@ test('narrow resource interface owns ID mapping and uses caller member lookup an
     f.setNow(f.shoot.join_started_at + 86400000)
     await f.resources.ensureInvitation(f.channel, f.shoot, { closed: false })
     assert.equal(f.messages.get('2').content, uiText('shoot.expiredInvitation'))
+})
+
+test('brief lists private display names by joining method without duplicating invited crew or the organizer', async () => {
+    const f = fixture([
+        { user_id: 'owner', invited: 1, reacted: 1 },
+        { user_id: 'invited', invited: 1 },
+        { user_id: 'both', invited: 1, reacted: 1 },
+        { user_id: 'reacted', reacted: 1 },
+        { user_id: 'global', reacted: 1 },
+        { user_id: 'username', reacted: 1 },
+        { user_id: 'former', reacted: 1 },
+        { user_id: 'inactive', invited: 0, reacted: 0 }
+    ])
+    const members = new Map([
+        ['invited', { displayName: 'Invited Crew' }],
+        ['both', { displayName: 'Invited Reactor' }],
+        ['reacted', { displayName: '**Reactor** <@123>' }],
+        ['global', { user: { globalName: 'Global Name' } }],
+        ['username', { user: { username: 'username' } }]
+    ])
+    const lookedUp = []
+    const message = await f.resources.ensureBrief(f.channel, f.shoot, {
+        closed: false,
+        members: async (id) => {
+            lookedUp.push(id)
+            return members.get(id)
+        }
+    })
+    const fields = message.embeds[0].fields
+    assert.equal(
+        fields.find((field) => field.name === uiText('shoot.crewInvited')).value,
+        'Invited Crew, Invited Reactor'
+    )
+    const reacted = fields.find((field) => field.name === uiText('shoot.crewReaction')).value
+    assert.equal(
+        reacted,
+        `${escapeMarkdown('**Reactor** ＜@123>')}, Global Name, username, ${escapeMarkdown(uiText('shoot.formerMember', { userId: 'former' }))}`
+    )
+    assert.doesNotMatch(reacted, /<@|Invited/)
+    assert.deepEqual(lookedUp, ['invited', 'both', 'reacted', 'global', 'username', 'former'])
+    assert.deepEqual(f.sends[0].allowedMentions, { parse: [] })
+    assert.equal(message.pinned, true)
+    const invitation = await f.resources.ensureInvitation(f.channel, f.shoot, { closed: false })
+    assert.equal(invitation.embeds[0].fields.length, 5)
+    assert.doesNotMatch(JSON.stringify(invitation.embeds), /Invited Crew|Reactor|Global Name|Former member/)
+})
+
+test('brief shows explicit empty states for both crew groups', async () => {
+    const f = fixture([])
+    const message = await f.resources.ensureBrief(f.channel, f.shoot, {
+        closed: false,
+        members: async () => assert.fail('empty rosters must not fetch members')
+    })
+    for (const key of ['crewInvited', 'crewReaction']) {
+        assert.equal(
+            message.embeds[0].fields.find((field) => field.name === uiText(`shoot.${key}`)).value,
+            uiText('shoot.crewEmpty')
+        )
+    }
+})
+
+test('full crew rosters fit Discord field and total embed limits with maximum escaped shoot details', async (t) => {
+    for (const kind of ['reaction', 'mixed', 'direct']) {
+        await t.test(kind, async () => {
+            const participants = Array.from({ length: 97 }, (_, index) => ({
+                user_id: `crew${String(index).padStart(2, '0')}`,
+                invited: kind === 'direct' || (kind === 'mixed' && index % 2 === 0) ? 1 : 0,
+                reacted: 1
+            }))
+            const f = fixture(participants)
+            Object.assign(f.shoot, {
+                name: '*'.repeat(100),
+                location: '*'.repeat(200),
+                call_date_text: '*'.repeat(200),
+                call_time_text: '*'.repeat(200)
+            })
+            const message = await f.resources.ensureBrief(f.channel, f.shoot, {
+                closed: false,
+                members: async (id) => ({ displayName: id + '*'.repeat(32 - id.length) })
+            })
+            const embed = message.embeds[0]
+            assert.ok(embed.length <= 6000, `embed length: ${embed.length}`)
+            assert.ok(embed.fields.length <= 25)
+            assert.ok(embed.fields.every((field) => field.value.length > 0 && field.value.length <= 1024))
+            for (const row of participants) {
+                const label = uiText(row.invited ? 'shoot.crewInvited' : 'shoot.crewReaction')
+                assert.ok(
+                    embed.fields
+                        .filter((field) => field.name === label)
+                        .some((field) => field.value.includes(row.user_id))
+                )
+            }
+        })
+    }
 })
 
 test('resource cleanup starts at exactly 24 hours and cannot republish a closed invitation afterward', async () => {

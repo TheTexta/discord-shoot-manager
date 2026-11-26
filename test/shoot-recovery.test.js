@@ -61,6 +61,9 @@ test('deleted briefs recover, announcements remain deleted, and a deleted chat i
     assert.ok(recovered.announcement_deleted_at)
     assert.equal(f.channels.get(IDS.announce).sends.length, 1)
     assert.ok(allows(chat, IDS.joined, P.ViewChannel))
+    const brief = chat.messages.cache.get(recovered.brief_id)
+    assert.equal(brief.pinned, true)
+    assert.equal(brief.embeds[0].fields.find((field) => field.name === 'Joined by reaction').value, 'joined')
     assert.deepEqual(f.channels.get(IDS.announce).sends.at(-1).allowedMentions, { parse: [] })
     shoot = recovered
     await f.restart()

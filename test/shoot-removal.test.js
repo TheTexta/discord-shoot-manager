@@ -27,13 +27,18 @@ test('shoot remove clears direct, reaction, and combined membership and permits 
             const { shoot } = await f.create()
             const name = kind === 'reaction' ? 'joined' : 'invited'
             const userId = IDS[name]
+            const member = f.members.get(userId)
+            member.displayName = 'Removed crew member'
             let reaction
             if (kind !== 'direct') {
                 reaction = await f.react(shoot, name)
                 await f.react(shoot, name, true, { burst: true })
             }
-            const member = f.members.get(userId)
-            member.displayName = 'Removed crew member'
+            await f.service.reconcileAll()
+            assert.match(
+                JSON.stringify(f.channels.get(shoot.channel_id).messages.cache.get(shoot.brief_id).embeds),
+                /Removed crew member/
+            )
             const interaction = removal(f, shoot, userId)
             await f.service.handleInteraction(interaction)
             assert.match(interaction.replies.at(-1).content, /Removed/)

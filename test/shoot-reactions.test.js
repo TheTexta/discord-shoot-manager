@@ -3,23 +3,38 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { joiningAllowed } = require('../src/shoots/ShootService')
+const { uiText } = require('../src/shared/uiText')
 const { Collection, PermissionFlagsBits: P, PermissionsBitField } = require('discord.js')
 const { IDS, fields, fixture, allows } = require('./helpers/shoot')
+
+function reactionCrew(f, shoot) {
+    return f.channels
+        .get(shoot.channel_id)
+        .messages.cache.get(shoot.brief_id)
+        .embeds[0].fields.filter((field) => field.name === uiText('shoot.crewReaction'))
+        .map((field) => field.value)
+        .join(' ')
+}
 
 test('partial, duplicate, and concurrent reaction events join once and preserve direct invitations', async (t) => {
     const f = await fixture(t)
     const { shoot } = await f.create()
+    assert.equal(reactionCrew(f, shoot), uiText('shoot.crewEmpty'))
     const reaction = await f.react(shoot, 'joined')
     const chat = f.channels.get(shoot.channel_id)
     assert.ok(allows(chat, IDS.joined, P.SendMessages))
+    assert.equal(reactionCrew(f, shoot), 'joined')
     await Promise.all([
         f.service.onReaction(reaction, f.members.get(IDS.joined).user),
         f.service.onReaction(reaction, f.members.get(IDS.joined).user)
     ])
     assert.equal((await f.store.shootParticipants(shoot.id)).filter((row) => row.user_id === IDS.joined).length, 1)
+    assert.equal(reactionCrew(f, shoot), 'joined')
     await f.react(shoot, 'joined', false)
     assert.equal(chat.permissionOverwrites.cache.has(IDS.joined), false)
+    assert.equal(reactionCrew(f, shoot), uiText('shoot.crewEmpty'))
     await f.react(shoot, 'invited')
+    assert.equal(reactionCrew(f, shoot), uiText('shoot.crewEmpty'))
     await f.react(shoot, 'invited', false)
     assert.ok(allows(chat, IDS.invited, P.SendMessages))
     await f.react(shoot, 'outsider')
@@ -28,6 +43,7 @@ test('partial, duplicate, and concurrent reaction events join once and preserve 
     assert.equal(f.notices.length, 1)
     await f.react(shoot, 'joined', true, { emoji: '👍' })
     assert.equal(chat.permissionOverwrites.cache.has(IDS.joined), false)
+    assert.equal(reactionCrew(f, shoot), uiText('shoot.crewEmpty'))
 })
 
 test('normal and super reactions retain membership until both are removed', async (t) => {
@@ -37,8 +53,10 @@ test('normal and super reactions retain membership until both are removed', asyn
     await f.react(shoot, 'joined', true, { burst: true })
     await f.react(shoot, 'joined', false)
     assert.ok(allows(f.channels.get(shoot.channel_id), IDS.joined, P.ViewChannel))
+    assert.equal(reactionCrew(f, shoot), 'joined')
     await f.react(shoot, 'joined', false, { burst: true })
     assert.equal(f.channels.get(shoot.channel_id).permissionOverwrites.cache.has(IDS.joined), false)
+    assert.equal(reactionCrew(f, shoot), uiText('shoot.crewEmpty'))
 })
 
 test('restart persists state and catches offline joins, leaves, and bulk reaction removal', async (t) => {
@@ -52,12 +70,46 @@ test('restart persists state and catches offline joins, leaves, and bulk reactio
     const chat = f.channels.get(shoot.channel_id)
     assert.equal(chat.permissionOverwrites.cache.has(IDS.joined), false)
     assert.ok(allows(chat, IDS.extra, P.SendMessages))
+    assert.equal(reactionCrew(f, shoot), 'extra')
     const message = f.channels.get(IDS.announce).messages.cache.get(shoot.announcement_id)
     message.reactions.cache.clear()
     await f.service.onReactionClear(message)
     assert.equal(chat.permissionOverwrites.cache.has(IDS.extra), false)
     assert.ok(allows(chat, IDS.invited, P.SendMessages))
     assert.ok(message.reactions.cache.get('🎬').me)
+    assert.equal(reactionCrew(f, shoot), uiText('shoot.crewEmpty'))
+})
+
+test('shoot-only reaction crew updates the same pin without pings and moves to direct invitations on add', async (t) => {
+    const f = await fixture(t, { membershipEnabled: false })
+    f.members.get(IDS.joined).displayName = 'Reaction Crew'
+    const { shoot } = await f.create()
+    const chat = f.channels.get(shoot.channel_id)
+    const brief = chat.messages.cache.get(shoot.brief_id)
+    await f.react(shoot, 'joined')
+    assert.equal(reactionCrew(f, shoot), 'Reaction Crew')
+    assert.equal(brief.pinned, true)
+    assert.equal(chat.sends.length, 1)
+    const edits = brief.edits.length
+    await f.service.reconcileAll()
+    assert.equal(brief.edits.length, edits, 'unchanged crew must not trigger redundant edits')
+    await f.service.handleInteraction(
+        f.interaction({ command: 'add', channelId: shoot.channel_id, addUserId: IDS.joined })
+    )
+    assert.equal(reactionCrew(f, shoot), uiText('shoot.crewEmpty'))
+    assert.match(
+        brief.embeds[0].fields.find((field) => field.name === uiText('shoot.crewInvited')).value,
+        /Reaction Crew/
+    )
+    await f.react(shoot, 'joined', false)
+    assert.ok(allows(chat, IDS.joined, P.ViewChannel))
+    for (const payload of [...chat.sends, ...brief.edits]) {
+        assert.deepEqual(payload.allowedMentions, { parse: [] })
+    }
+    const announcement = f.channels.get(IDS.announce).messages.cache.get(shoot.announcement_id)
+    assert.doesNotMatch(JSON.stringify(announcement.embeds), /Reaction Crew|Joined by reaction/)
+    assert.equal((await f.store.getShoot(shoot.id, IDS.guild)).brief_id, shoot.brief_id)
+    assert.equal(f.errors.length, 0)
 })
 
 test('reaction pagination includes every normal and super reaction page', async (t) => {
@@ -127,6 +179,7 @@ test('failed reaction cleanup cannot prevent revoking an ineligible member', asy
     await f.service.reconcileAll()
     assert.equal(f.channels.get(shoot.channel_id).permissionOverwrites.cache.has(IDS.joined), false)
     assert.equal((await f.store.shootParticipants(shoot.id)).find((row) => row.user_id === IDS.joined).reacted, 0)
+    assert.equal(reactionCrew(f, shoot), uiText('shoot.crewEmpty'))
     assert.ok(f.errors.some((error) => error.error.includes('Manage Messages')))
 })
 

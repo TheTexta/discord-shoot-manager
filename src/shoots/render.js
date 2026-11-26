@@ -65,4 +65,20 @@ function memberFields(label, mentions) {
     return chunks.map((value) => ({ name: label, value: value.trim() }))
 }
 
-module.exports = { renderShoot, memberFields }
+function crewFields(invited, reacted, budget) {
+    const groups = [
+        [uiText('shoot.crewInvited'), invited],
+        [uiText('shoot.crewReaction'), reacted]
+    ]
+    // Shorten names only when needed to fit both rosters beside the shoot details.
+    for (let limit = 48; limit > 0; limit--) {
+        const fields = groups.flatMap(([label, names]) =>
+            memberFields(label, names.map((name) => name.slice(0, limit)).join(', ') || uiText('shoot.crewEmpty'))
+        )
+        if (fields.reduce((length, field) => length + field.name.length + field.value.length, 0) <= budget)
+            return fields
+    }
+    throw new RangeError('Shoot crew exceeds Discord embed limits')
+}
+
+module.exports = { renderShoot, memberFields, crewFields }
